@@ -124,6 +124,7 @@ function renderHome() {
     h('div', { class: 'page-head' }, h('div', {},
       h('h1', {}, (hour < 12 ? 'صباح الخير' : 'مساء الخير') + '، ' + p.full_name.split(' ')[0]),
       h('p', { class: 'sub' }, 'اختر القسم'))),
+    mods.length === 0 && h('div', { class: 'notice warn' }, 'لا توجد أقسام متاحة لحسابك حتى الآن. تواصل مع المحاسب لتحديد صلاحياتك.'),
     h('div', { class: 'tiles' }, mods.map((m) => {
       const ready = m.enabled && MODULES.some((x) => x.code === m.code);
       return h('a', { class: 'tile' + (ready ? '' : ' soon'), href: ready ? `#/${m.code}` : null },
