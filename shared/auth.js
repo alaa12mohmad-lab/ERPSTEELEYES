@@ -2,11 +2,12 @@
 import { sb, rpc } from './sb.js';
 import { h, toast } from './ui.js';
 import { CONFIG } from '../config.js';
+import { VERSION } from './version.js';
 
 function authShell(title, sub, ...content) {
   return h('div', { class: 'auth-wrap' },
     h('div', { class: 'auth-card' }, h('h1', {}, title), sub && h('p', { class: 'sub' }, sub), ...content,
-      h('div', { class: 'foot' }, `${CONFIG.APP_NAME} — الإصدار ${CONFIG.VERSION}`)));
+      h('div', { class: 'foot' }, `${CONFIG.APP_NAME} — الإصدار ${VERSION}`)));
 }
 
 export function renderLogin(root, onDone) {

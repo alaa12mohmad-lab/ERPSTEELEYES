@@ -1,6 +1,6 @@
 // شاشة بيانات أساسية عامة: قائمة + بحث + فلترة + إضافة/تعديل + أرشفة/إلغاء + استيراد/تصدير Excel
 // كل قسم يعرّف شاشته بإعدادات فقط، بدون تكرار كود
-import { core, errMsg, updateRow, insertRows } from './sb.js';
+import { core, db, errMsg, updateRow, insertRows } from './sb.js';
 import { h, modal, toast, askReason, fmt, statusBadge } from './ui.js';
 import { state } from './state.js';
 
@@ -81,7 +81,7 @@ export function renderMaster(container, cfg) {
 
   async function load() {
     tbody.replaceChildren(h('tr', {}, h('td', { colspan: cfg.columns.length + 1, class: 'empty' }, 'جارٍ التحميل…')));
-    let q = core.from(cfg.view || cfg.table).select(cfg.select || '*');
+    let q = db(cfg.schema).from(cfg.view || cfg.table).select(cfg.select || '*');
     if (statusFilter !== 'all') q = q.eq('status', statusFilter);
     if (cfg.companyField && !state.allCompaniesSelected()) {
       const ids = state.selectedCompanies.join(',');
@@ -173,8 +173,8 @@ export function renderMaster(container, cfg) {
       saveBtn.disabled = true;
       try {
         let id;
-        if (isNew) id = (await insertRows(cfg.table, [values]))[0].id;
-        else { await updateRow(cfg.table, row.id, values); id = row.id; }
+        if (isNew) id = (await insertRows(cfg.table, [values], cfg.schema))[0].id;
+        else { await updateRow(cfg.table, row.id, values, cfg.schema); id = row.id; }
         await cfg.onSaved?.(id, values, isNew);
         toast('تم الحفظ', 'ok');
         m.close();
@@ -196,7 +196,7 @@ export function renderMaster(container, cfg) {
     if (!isNew && canEdit() && cfg.allowStatus !== false) {
       const setStatus = async (status, reason = null) => {
         try {
-          await updateRow(cfg.table, row.id, { status, cancel_reason: reason });
+          await updateRow(cfg.table, row.id, { status, cancel_reason: reason }, cfg.schema);
           toast(status === 'active' ? 'تمت الاستعادة' : status === 'archived' ? 'تمت الأرشفة' : 'تم الإلغاء', 'ok');
           m.close(); load();
         } catch (e) { toast(e.message, 'bad'); }
@@ -229,6 +229,7 @@ export function renderMaster(container, cfg) {
 
   function parseCell(f, raw, opts) {
     const s = raw === null || raw === undefined ? '' : String(raw).trim();
+    if (s === '' && f.default !== undefined) return { v: f.default };
     if (f.type === 'bool') return { v: ['نعم', 'yes', '1', 'true', 'y', '✓'].includes(s.toLowerCase()) };
     if (s === '') return { v: null };
     if (f.type === 'number') { const n = Number(s.replace(/,/g, '')); return isNaN(n) ? { err: `${f.label}: رقم غير صحيح` } : { v: n }; }
@@ -295,10 +296,12 @@ export function renderMaster(container, cfg) {
       importBtn.textContent = `استيراد ${parsed.length - bad.length} صف`;
     });
     importBtn.addEventListener('click', async () => {
-      const good = parsed.filter((p) => !p.errs.length).map((p) => p.rec);
+      const base = cfg.defaults ? cfg.defaults() : {};
+      const good = parsed.filter((p) => !p.errs.length)
+        .map((p) => ({ ...base, ...Object.fromEntries(Object.entries(p.rec).filter(([, v]) => v !== null && v !== undefined)) }));
       importBtn.disabled = true;
       try {
-        for (let i = 0; i < good.length; i += 500) await insertRows(cfg.table, good.slice(i, i + 500));
+        for (let i = 0; i < good.length; i += 500) await insertRows(cfg.table, good.slice(i, i + 500), cfg.schema);
         toast(`تم استيراد ${good.length} صف`, 'ok'); m.close(); load();
       } catch (e) { toast('لم يُستورد شيء: ' + e.message, 'bad'); importBtn.disabled = false; }
     });

@@ -189,3 +189,49 @@ pre.json { direction: ltr; text-align: left; background: var(--surface-2); paddi
   .modal { max-height: 100vh; border-radius: 12px; }
   .kv { grid-template-columns: 1fr; }
 }
+
+/* ---------- المحاسبة ---------- */
+.je-wrap { max-height: calc(100vh - 290px); }
+table.je-grid { font-size: 13px; }
+table.je-grid th { white-space: nowrap; z-index: 2; }
+table.je-grid td { padding: 3px 4px; vertical-align: top; border-bottom-color: #eef0f3; }
+table.je-grid tbody tr { cursor: default; }
+table.je-grid tbody tr:hover { background: transparent; }
+table.je-grid tr.alt td { background: #fafbfd; }
+table.je-grid tr.first td { border-top: 2px solid var(--line-2); }
+table.je-grid tr.err td { background: var(--bad-soft) !important; }
+table.je-grid tr.hl td { background: var(--warn-soft) !important; }
+table.je-grid.view tbody tr { cursor: pointer; }
+table.je-grid.view td { padding: 7px 10px; }
+.je-no { width: 92px; text-align: center; }
+.je-no .je-num { font-weight: 700; font-size: 14px; margin: 2px 0 4px; }
+.je-no .badge { display: block; margin: 3px auto; width: fit-content; }
+.je-no select { margin-top: 4px; font-size: 12px; }
+.je-desc-cell { min-width: 170px; }
+.je-desc { min-height: 34px !important; resize: vertical; }
+.cell-input { min-height: 32px; padding: 4px 7px; border-radius: 6px; font-size: 13px; border-color: #e1e4e9; background: #fff; }
+.cell-input.num { direction: ltr; text-align: end; width: 110px; font-variant-numeric: tabular-nums; }
+.cell-input.acc { min-width: 220px; }
+.cell-input.req:not([disabled]) { border-color: #e2b23c; background: #fffbea; }
+.cell-input.invalid { border-color: var(--bad); background: var(--bad-soft); }
+.cell-input:disabled { background: #f1f2f4; border-color: transparent; }
+td .cell-input { min-width: 120px; }
+table.report tr.group td { font-weight: 700; background: var(--surface-2); }
+table.report tfoot td, table.grid tfoot td { font-weight: 700; background: var(--surface-2); border-top: 2px solid var(--line-2); }
+td.num.neg { color: var(--bad); }
+.fin { max-width: 860px; }
+.fin-title { font-size: 18px; margin: 4px 0 10px; }
+.fin-table td:first-child { white-space: normal; }
+.fin-header td { font-weight: 700; background: var(--surface-2); padding-top: 14px; }
+.fin-account td:first-child { padding-inline-start: 28px; }
+.fin-total td { font-weight: 700; border-top: 1px solid var(--line-2); }
+.fin-subtotal td { font-weight: 700; background: var(--accent-soft); }
+.fin-grand td { font-weight: 800; background: var(--brand); color: #fff; }
+.fin-grand td.num.neg { color: #ffb4a9; }
+.fin-check td { font-size: 12px; color: var(--ink-3); }
+@media print {
+  .topbar, .subnav, .toolbar, .crumbs, .version, #toasts { display: none !important; }
+  .page { padding: 0; max-width: none; }
+  .card { box-shadow: none; border: 0; }
+  .je-wrap, .table-wrap { max-height: none !important; overflow: visible !important; }
+}

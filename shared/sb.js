@@ -5,8 +5,10 @@ export const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPAB
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'erp-auth' },
 });
 
-// قاعدة بيانات الأساس (schema core)
+// قاعدة بيانات الأساس (schema core) وقسم المحاسبة
 export const core = sb.schema('core');
+export const acc = sb.schema('accounting');
+export const db = (schema) => (schema === 'accounting' ? acc : schema && schema !== 'core' ? sb.schema(schema) : core);
 
 // ترجمة أخطاء قاعدة البيانات لرسالة مفهومة
 export function errMsg(error) {
@@ -40,21 +42,21 @@ export async function callFn(name, body) {
 }
 
 // تحديث مع التأكد أن الصف تغيّر فعلًا (RLS يرفض التعديل بصمت)
-export async function updateRow(table, id, values) {
-  const { data, error } = await core.from(table).update(values).eq('id', id).select('id');
+export async function updateRow(table, id, values, schema) {
+  const { data, error } = await db(schema).from(table).update(values).eq('id', id).select('id');
   if (error) throw new Error(errMsg(error));
   if (!data || data.length === 0) throw new Error('ليس لديك صلاحية لتعديل هذا السجل');
   return data[0];
 }
 
-export async function insertRows(table, rows) {
-  const { data, error } = await core.from(table).insert(rows).select('id');
+export async function insertRows(table, rows, schema) {
+  const { data, error } = await db(schema).from(table).insert(rows).select('id');
   if (error) throw new Error(errMsg(error));
   return data;
 }
 
-export async function rpc(fn, args = {}) {
-  const { data, error } = await core.rpc(fn, args);
+export async function rpc(fn, args = {}, schema) {
+  const { data, error } = await db(schema).rpc(fn, args);
   if (error) throw new Error(errMsg(error));
   return data;
 }

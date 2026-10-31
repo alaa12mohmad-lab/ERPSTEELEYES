@@ -1,14 +1,16 @@
 // نقطة البداية: الدخول، الهيكل العام، الشاشة الرئيسية، التنقل بين الأقسام
 import { CONFIG } from './config.js';
+import { VERSION } from './shared/version.js';
 import { sb } from './shared/sb.js';
 import { h, toast, modal, icon } from './shared/ui.js';
 import { state } from './shared/state.js';
 import { renderLogin, renderMessage, renderChangePassword, renderMfa, changePasswordForm, mfaForm } from './shared/auth.js';
 import coreModule from './modules/core/index.js';
 import adminModule from './modules/admin/index.js';
+import accountingModule from './modules/accounting/index.js';
 
 // كل قسم جديد يُضاف هنا فقط
-const MODULES = [coreModule, adminModule];
+const MODULES = [coreModule, adminModule, accountingModule];
 
 const root = document.getElementById('app');
 
@@ -79,7 +81,7 @@ function renderShell() {
       h('a', { class: 'brand', href: '#/' }, CONFIG.APP_NAME),
       picker, h('div', { class: 'spacer' }), userBtn),
     main,
-    h('div', { class: 'version' }, 'v' + CONFIG.VERSION));
+    h('div', { class: 'version' }, 'v' + VERSION));
   route();
 }
 
@@ -99,6 +101,7 @@ async function openMfa() {
 window.addEventListener('hashchange', () => { if (main) route(); });
 
 function route() {
+  document.querySelectorAll('.overlay').forEach((o) => o.remove());   // النوافذ المفتوحة لا تنتقل مع الصفحة
   const [modCode, tabPath] = location.hash.replace(/^#\/?/, '').split('/');
   if (!modCode) return renderHome();
   const mod = MODULES.find((m) => m.code === modCode);
