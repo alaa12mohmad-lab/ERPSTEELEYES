@@ -54,18 +54,19 @@ export function confirmDialog(message, { ok = 'تأكيد', danger = false } = {
 }
 
 // طلب سبب (للإلغاء)
-export function askReason(title = 'سبب الإلغاء') {
+export function askReason(title = 'سبب الإلغاء', { ok = 'إلغاء السجل', note = '' } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const m = modal({ title, size: 'narrow', onClose: () => { if (!done) resolve(null); } });
     const ta = h('textarea', { class: 'input', placeholder: 'اكتب السبب…' });
+    if (note) m.body.append(h('p', { class: 'notice', style: { marginBottom: '12px' } }, note));
     m.body.append(h('div', { class: 'field' }, h('label', {}, 'السبب', h('span', { class: 'req' }, '*')), ta));
     const go = () => {
       const v = ta.value.trim();
       if (!v) { ta.focus(); return; }
       done = true; m.close(); resolve(v);
     };
-    m.foot.append(h('button', { class: 'btn accent', onclick: go }, 'إلغاء السجل'), h('button', { class: 'btn', onclick: () => m.close() }, 'رجوع'));
+    m.foot.append(h('button', { class: 'btn accent', onclick: go }, ok), h('button', { class: 'btn', onclick: () => m.close() }, 'رجوع'));
     setTimeout(() => ta.focus(), 30);
   });
 }

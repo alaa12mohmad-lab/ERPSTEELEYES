@@ -1,6 +1,6 @@
 // شجرة الحسابات
-import { acc, rpc } from '../../shared/sb.js';
-import { h, modal, toast } from '../../shared/ui.js';
+import { acc, rpc, updateRow } from '../../shared/sb.js';
+import { h, modal, toast, confirmDialog } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { renderMaster, opts } from '../../shared/master.js';
 import { companySelect, clearLookups, ACCOUNT_TYPES, RULES, typeLabel } from './lookups.js';
@@ -23,14 +23,27 @@ export function renderAccounts(el) {
   el.replaceChildren(
     h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap' } },
       h('label', { style: { fontWeight: 600 } }, 'الشركة:'), sel,
-      h('span', { class: 'help' }, 'الحساب المجمّع لا يقبل الإدخال. الحساب القابل للإدخال لا يُحفظ بدون تبويبه كاملًا.')),
+      h('span', { class: 'help' }, 'الحساب المجمّع لا يقبل الإدخال. الحساب الفاضي (بدون حركات ولا فروع) يُحذف، والحساب اللي عليه حركات يُوقف بشرط رصيد صفر.')),
     box);
 
   function draw() {
     clearLookups();
     renderMaster(box, {
       title: 'الحساب', schema: 'accounting', table: 'accounts', view: 'v_accounts', module: 'accounting', wideForm: true, importable: true,
-      levelAdd: 3, levelEdit: 3,
+      levelAdd: 3, levelEdit: 3, allowStatus: false,
+      rowActions: [
+        { label: 'توقيف الحساب', show: (r) => r.status === 'active' && state.can('accounting', 3), run: async (r, { close, reload }) => {
+          if (!(await confirmDialog(`توقيف "${r.name}"؟ لن يظهر في إدخال القيود. يتطلب أن يكون رصيده صفرًا.`, { ok: 'توقيف' }))) return;
+          try { await updateRow('accounts', r.id, { status: 'archived' }, 'accounting'); toast('تم توقيف الحساب', 'ok'); close(); clearLookups(); reload(); } catch (e) { toast(e.message, 'bad'); }
+        } },
+        { label: 'إعادة التفعيل', show: (r) => r.status !== 'active' && state.can('accounting', 3), run: async (r, { close, reload }) => {
+          try { await updateRow('accounts', r.id, { status: 'active', cancel_reason: null }, 'accounting'); toast('تم تفعيل الحساب', 'ok'); close(); clearLookups(); reload(); } catch (e) { toast(e.message, 'bad'); }
+        } },
+        { label: 'حذف الحساب', show: (r) => !r.has_lines && !r.has_children && state.can('accounting', 3), run: async (r, { close, reload }) => {
+          if (!(await confirmDialog(`حذف "${r.code} — ${r.name}" نهائيًا؟ الحساب لم يُستخدم في أي قيد. (يبقى أثره في سجل المراجعة)`, { ok: 'حذف', danger: true }))) return;
+          try { await rpc('delete_account', { p_account: r.id }, 'accounting'); toast('حُذف الحساب', 'ok'); close(); clearLookups(); reload(); } catch (e) { toast(e.message, 'bad'); }
+        } },
+      ],
       filter: (q) => q.eq('company_id', company),
       order: [{ col: 'sort_path' }],
       searchKeys: ['code', 'name', 'manara_code'],

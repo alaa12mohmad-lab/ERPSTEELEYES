@@ -118,17 +118,17 @@ export async function renderStatement(el) {
     out.replaceChildren(h('div', { class: 'card' },
       h('div', { class: 'toolbar' }, h('strong', {}, title), h('span', { class: 'help' }, `من ${from.value} إلى ${to.value} — ${state.companyName(company)}`)),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
-        h('thead', {}, h('tr', {}, ['التاريخ', 'القيد', isAcc ? 'الحساب' : 'الحساب', 'البيان', isAcc ? 'الطرف' : 'المشروع', isAcc ? 'المشروع' : '', 'مدين', 'دائن', 'الرصيد'].map((t) => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['التاريخ', 'القيد', 'الحساب', 'البيان', 'الفاتورة', isAcc ? 'الطرف' : 'المشروع', isAcc ? 'المشروع' : '', 'مدين', 'دائن', 'الرصيد'].map((t) => h('th', {}, t)))),
         h('tbody', {}, rows.map((r) => h('tr', { class: r.row_kind === 'opening' ? 'group' : '', onclick: () => r.entry_id && openEntry(r.entry_id) },
           h('td', {}, fmt.date(r.entry_date)), h('td', { class: 'ltr' }, r.entry_ref || ''), h('td', {}, isAcc ? (r.account_code || '') : (r.account_name || '')),
-          h('td', { style: { whiteSpace: 'normal', maxWidth: '360px' } }, r.description),
+          h('td', { style: { whiteSpace: 'normal', maxWidth: '360px' } }, r.description), h('td', { class: 'ltr' }, r.invoice_no || ''),
           h('td', {}, isAcc ? (r.party_name || '') : (r.project_name || '')), h('td', {}, isAcc ? (r.project_name || '') : ''),
           h('td', { class: 'num' }, Number(r.debit) ? N(r.debit) : ''), h('td', { class: 'num' }, Number(r.credit) ? N(r.credit) : ''),
           h('td', { class: neg(r.balance) }, N(r.balance))))),
-        h('tfoot', {}, h('tr', {}, h('td', { colspan: 6 }, `حركة الفترة (${lines.length})`), h('td', { class: 'num' }, N(totD)), h('td', { class: 'num' }, N(totC)),
+        h('tfoot', {}, h('tr', {}, h('td', { colspan: 7 }, `حركة الفترة (${lines.length})`), h('td', { class: 'num' }, N(totD)), h('td', { class: 'num' }, N(totC)),
           h('td', { class: neg(last?.balance) }, N(last?.balance))))))));
-    return { name: title, aoa: [['التاريخ', 'القيد', 'الحساب', 'البيان', 'الطرف/المشروع', 'المشروع', 'مدين', 'دائن', 'الرصيد'],
-      ...rows.map((r) => [r.entry_date, r.entry_ref || '', isAcc ? r.account_code : r.account_name, r.description, isAcc ? r.party_name : r.project_name, isAcc ? r.project_name : '', Number(r.debit), Number(r.credit), Number(r.balance)])] };
+    return { name: title, aoa: [['التاريخ', 'القيد', 'الحساب', 'البيان', 'الفاتورة', 'الطرف/المشروع', 'المشروع', 'مدين', 'دائن', 'الرصيد'],
+      ...rows.map((r) => [r.entry_date, r.entry_ref || '', isAcc ? r.account_code : r.account_name, r.description, r.invoice_no || '', isAcc ? r.party_name : r.project_name, isAcc ? r.project_name : '', Number(r.debit), Number(r.credit), Number(r.balance)])] };
   });
   if (pendingStatement) {
     const d = pendingStatement; pendingStatement = null;
@@ -297,4 +297,152 @@ async function equipmentDetail(q, from, to) {
       h('td', {}, r.project_name || 'بدون مشروع (على الشركة المالكة)'), h('td', {}, `${r.account_code} — ${r.account_name}`), h('td', {}, typeLabel(r.account_type)),
       h('td', { class: 'num' }, N(r.amount))))))
     : h('div', { class: 'empty' }, 'لا توجد حركات'));
+}
+
+// ---------------------------------------------------------------------
+// الإقرار الضريبي (ربع سنوي أو شهري حسب إعداد الشركة)
+// ---------------------------------------------------------------------
+const CAT = { standard: 'الأساسية', zero: 'الصفرية', exempt: 'المعفاة' };
+
+function periodRange(year, period, n) {
+  const pad = (x) => String(x).padStart(2, '0');
+  const m1 = period === 'monthly' ? n : (n - 1) * 3 + 1;
+  const m2 = period === 'monthly' ? n : m1 + 2;
+  const last = new Date(Date.UTC(year, m2, 0)).getUTCDate();
+  return [`${year}-${pad(m1)}-01`, `${year}-${pad(m2)}-${pad(last)}`];
+}
+
+export async function renderVatReturn(el) {
+  let company; let lk;
+  const sel = companySelect(async (v) => { company = v; await setup(); go(); }); company = sel.value;
+  const now = new Date(Date.now() + 3 * 3600 * 1000);
+  const year = h('select', { class: 'input', style: { width: 'auto' } },
+    [now.getUTCFullYear() + 1, now.getUTCFullYear(), now.getUTCFullYear() - 1, now.getUTCFullYear() - 2].map((y) => h('option', { value: y, selected: y === now.getUTCFullYear() }, y)));
+  const period = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: 'quarterly' }, 'ربع سنوي'), h('option', { value: 'monthly' }, 'شهري'));
+  const part = h('select', { class: 'input', style: { width: 'auto' } });
+  const fillPart = () => {
+    const cur = period.value === 'monthly' ? now.getUTCMonth() + 1 : Math.floor(now.getUTCMonth() / 3) + 1;
+    const keep = Number(part.value) || cur;
+    part.replaceChildren(...(period.value === 'monthly'
+      ? Array.from({ length: 12 }, (_, i) => h('option', { value: i + 1, selected: i + 1 === keep }, `شهر ${i + 1}`))
+      : [1, 2, 3, 4].map((q) => h('option', { value: q, selected: q === Math.min(keep, 4) }, `الربع ${['الأول', 'الثاني', 'الثالث', 'الرابع'][q - 1]}`))));
+  };
+  async function setup() {
+    lk = await loadLookups(company);
+    period.value = lk.vatPeriod === 'monthly' ? 'monthly' : 'quarterly';
+    part.value = ''; fillPart();
+  }
+  period.addEventListener('change', () => { part.value = ''; fillPart(); });
+  await setup();
+
+  const go = frame(el, [sel, year, period, part], async (out) => {
+    const [from, to] = periodRange(Number(year.value), period.value, Number(part.value));
+    const [rows, mov] = await Promise.all([
+      rpc('vat_return', { p_company: company, p_from: from, p_to: to }, 'accounting'),
+      rpc('vat_accounts_movement', { p_company: company, p_from: from, p_to: to }, 'accounting'),
+    ]);
+    const sum = (kind, cat, f, sign) => rows.filter((r) => r.kind === kind && r.category === cat && (sign === undefined || (sign > 0 ? Number(r.base) >= 0 : Number(r.base) < 0)))
+      .reduce((s, r) => s + Number(r[f]), 0);
+    const box = (kind, cat) => ({ amount: sum(kind, cat, 'base', 1), adj: sum(kind, cat, 'base', -1), vat: sum(kind, cat, 'vat') });
+    const section = (kind) => ['standard', 'zero', 'exempt'].map((c) => ({ cat: c, ...box(kind, c) }));
+    const sales = section('sales'), purch = section('purchases');
+    const tot = (list) => list.reduce((s, b) => ({ amount: s.amount + b.amount, adj: s.adj + b.adj, vat: s.vat + b.vat }), { amount: 0, adj: 0, vat: 0 });
+    const ts = tot(sales), tp = tot(purch);
+    const net = ts.vat - tp.vat;
+    const movOut = mov.filter((m) => m.vat_role === 'output').reduce((s, m) => s + Number(m.credit) - Number(m.debit), 0);
+    const movIn = mov.filter((m) => m.vat_role === 'input').reduce((s, m) => s + Number(m.debit) - Number(m.credit), 0);
+    const okOut = Math.abs(movOut - ts.vat) < 0.005, okIn = Math.abs(movIn - tp.vat) < 0.005;
+    const incomplete = rows.filter((r) => r.incomplete);
+    const offRate = rows.filter((r) => r.category === 'standard' && Number(r.base) && Math.abs(Number(r.base) * lk.vatRate - Number(r.vat)) > 0.1);
+
+    const boxRow = (label, b) => h('tr', {}, h('td', {}, label), h('td', { class: 'num' }, N(b.amount)), h('td', { class: neg(b.adj) }, b.adj ? N(b.adj) : ''), h('td', { class: 'num' }, N(b.vat)));
+    const detailTable = (kind) => {
+      const list = rows.filter((r) => r.kind === kind);
+      return h('table', { class: 'grid report' },
+        h('thead', {}, h('tr', {}, ['الفئة', 'القيد', 'تاريخ القيد', kind === 'sales' ? 'العميل' : 'المورد', 'الرقم الضريبي', 'رقم الفاتورة', 'تاريخ الفاتورة', 'المبلغ الخاضع', 'الضريبة'].map((t) => h('th', {}, t)))),
+        h('tbody', {}, list.length ? list.map((r) => h('tr', { class: r.incomplete ? 'warnrow' : '', onclick: () => openEntry(r.entry_id) },
+          h('td', {}, CAT[r.category]), h('td', { class: 'ltr' }, r.entry_ref), h('td', {}, fmt.date(r.entry_date)), h('td', {}, r.party_name || h('span', { class: 'badge warn' }, 'ناقص')),
+          h('td', { class: 'ltr' }, r.tax_number || ''), h('td', { class: 'ltr' }, r.invoice_no || (r.incomplete ? h('span', { class: 'badge warn' }, 'ناقص') : '')),
+          h('td', {}, fmt.date(r.invoice_date)), h('td', { class: neg(r.base) }, N(r.base)), h('td', { class: neg(r.vat) }, N(r.vat))))
+          : h('tr', {}, h('td', { colspan: 9, class: 'empty' }, 'لا توجد فواتير'))),
+        h('tfoot', {}, h('tr', {}, h('td', { colspan: 7 }, `${list.length} فاتورة`), h('td', { class: 'num' }, N(list.reduce((s, r) => s + Number(r.base), 0))),
+          h('td', { class: 'num' }, N(list.reduce((s, r) => s + Number(r.vat), 0))))));
+    };
+    const tabsBox = h('div');
+    const showTab = (kind) => { tabsBox.replaceChildren(h('div', { class: 'table-wrap' }, detailTable(kind))); btnS.classList.toggle('primary', kind === 'sales'); btnP.classList.toggle('primary', kind === 'purchases'); };
+    const btnS = h('button', { class: 'btn', onclick: () => showTab('sales') }, 'فواتير المبيعات');
+    const btnP = h('button', { class: 'btn', onclick: () => showTab('purchases') }, 'فواتير المشتريات');
+
+    out.replaceChildren(
+      incomplete.length ? h('div', { class: 'notice warn', style: { marginBottom: '10px' } },
+        `${incomplete.length} سطر ضريبة بدون بيانات كاملة (غالبًا قيود قديمة قبل إضافة خانات الفاتورة) — افتحها من الكشف وعدّلها.`) : '',
+      offRate.length ? h('div', { class: 'notice warn', style: { marginBottom: '10px' } },
+        `${offRate.length} فاتورة الضريبة فيها لا تساوي ${lk.vatRate * 100}% من المبلغ الخاضع — راجعها.`) : '',
+      h('div', { class: 'card fin', style: { marginBottom: '12px' } },
+        h('div', { class: 'toolbar' }, h('strong', {}, `الإقرار الضريبي — ${state.companyName(company)}`), h('span', { class: 'help' }, `من ${from} إلى ${to} (بتاريخ القيد)`)),
+        h('table', { class: 'grid report vat-sum' },
+          h('thead', {}, h('tr', {}, ['البند', 'المبلغ', 'التعديلات (إشعارات)', 'الضريبة'].map((t) => h('th', {}, t)))),
+          h('tbody', {},
+            ...sales.map((b) => boxRow('المبيعات ' + CAT[b.cat], b)), h('tr', { class: 'sub' }, ...boxRow('إجمالي المبيعات', ts).children),
+            ...purch.map((b) => boxRow('المشتريات ' + CAT[b.cat], b)), h('tr', { class: 'sub' }, ...boxRow('إجمالي المشتريات', tp).children),
+            h('tr', { class: 'net' }, h('td', { colspan: 3 }, net >= 0 ? 'صافي الضريبة المستحقة' : 'صافي الضريبة المستردة'), h('td', { class: 'num' }, N(Math.abs(net)))))),
+        h('div', { style: { padding: '10px 14px', display: 'flex', gap: '24px', flexWrap: 'wrap' } },
+          h('span', {}, 'مطابقة حساب ضريبة المخرجات: ', h('span', { class: okOut ? 'stat-ok' : 'stat-bad' }, okOut ? `مطابق ✓ (${N(movOut)})` : `فرق ${N(movOut - ts.vat)}`)),
+          h('span', {}, 'مطابقة حساب ضريبة المدخلات: ', h('span', { class: okIn ? 'stat-ok' : 'stat-bad' }, okIn ? `مطابق ✓ (${N(movIn)})` : `فرق ${N(movIn - tp.vat)}`)),
+          h('span', { class: 'help' }, 'الإقرار الرسمي يُقدَّم من المنارة؛ هذا للتحضير والمراجعة.'))),
+      h('div', { class: 'card' }, h('div', { class: 'toolbar' }, btnS, btnP), tabsBox));
+    showTab('sales');
+
+    const head = ['النوع', 'الفئة', 'القيد', 'تاريخ القيد', 'الطرف', 'الرقم الضريبي', 'رقم الفاتورة', 'تاريخ الفاتورة', 'المبلغ الخاضع', 'الضريبة', 'بيانات ناقصة'];
+    return { name: `الإقرار الضريبي ${from} - ${to}`, aoa: [
+      ['البند', 'المبلغ', 'التعديلات', 'الضريبة'],
+      ...sales.map((b) => ['المبيعات ' + CAT[b.cat], b.amount, b.adj, b.vat]), ['إجمالي المبيعات', ts.amount, ts.adj, ts.vat],
+      ...purch.map((b) => ['المشتريات ' + CAT[b.cat], b.amount, b.adj, b.vat]), ['إجمالي المشتريات', tp.amount, tp.adj, tp.vat],
+      [net >= 0 ? 'صافي الضريبة المستحقة' : 'صافي الضريبة المستردة', '', '', Math.abs(net)], [],
+      head, ...rows.map((r) => [r.kind === 'sales' ? 'مبيعات' : 'مشتريات', CAT[r.category], r.entry_ref, r.entry_date, r.party_name || '', r.tax_number || '',
+        r.invoice_no || '', r.invoice_date || '', Number(r.base), Number(r.vat), r.incomplete ? 'نعم' : ''])] };
+  });
+  [year, part].forEach((x) => x.addEventListener('change', go));
+  period.addEventListener('change', go);
+  go();
+}
+
+// ---------------------------------------------------------------------
+// الفواتير: المفتوح والمسدد لكل طرف (من رقم الفاتورة على سطر حساب الطرف)
+// ---------------------------------------------------------------------
+export async function renderInvoices(el) {
+  let company; let lk; let partyP;
+  const sel = companySelect(async (v) => { company = v; await reload(); go(); }); company = sel.value;
+  const asOf = dateInput(today());
+  const show = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: 'open' }, 'المفتوحة فقط'), h('option', { value: 'all' }, 'الكل'));
+  const slot = h('span', { style: { display: 'contents' } });
+  async function reload() {
+    lk = await loadLookups(company);
+    partyP = picker({ options: lk.parties, listKey: 'party', placeholder: 'كل الأطراف' }); partyP.el.style.minWidth = '220px';
+    slot.replaceChildren(partyP.el);
+  }
+  await reload();
+  const go = frame(el, [sel, slot, h('span', {}, 'حتى'), asOf, show], async (out) => {
+    partyP.resolve();
+    const all = await rpc('open_invoices', { p_company: company, p_as_of: asOf.value, p_party: partyP.id }, 'accounting');
+    const rows = show.value === 'open' ? all.filter((r) => Math.abs(Number(r.remaining)) >= 0.005) : all;
+    const st = (r) => (Math.abs(Number(r.remaining)) < 0.005 ? h('span', { class: 'badge ok' }, 'مسددة') : Number(r.settled) > 0 ? h('span', { class: 'badge warn' }, 'جزئي') : h('span', { class: 'badge' }, 'مفتوحة'));
+    const sum = (k) => rows.reduce((s, r) => s + Number(r[k]), 0);
+    out.replaceChildren(h('div', { class: 'card' },
+      h('div', { class: 'toolbar' }, h('strong', {}, `الفواتير — ${state.companyName(company)}`),
+        h('span', { class: 'help' }, 'من رقم الفاتورة المكتوب على سطر حساب العميل أو المورد. السداد يُربط بالفاتورة بكتابة نفس الرقم على سطر السداد.')),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
+        h('thead', {}, h('tr', {}, ['الطرف', 'الحساب', 'رقم الفاتورة', 'تاريخ الفاتورة', 'القيد', 'القيمة', 'المسدد', 'المتبقي', 'العمر (يوم)', 'الحالة'].map((t) => h('th', {}, t)))),
+        h('tbody', {}, rows.length ? rows.map((r) => h('tr', { onclick: () => openEntry(r.entry_id) },
+          h('td', {}, r.party_name), h('td', {}, `${r.account_code} — ${r.account_name}`), h('td', { class: 'ltr' }, r.invoice_no), h('td', {}, fmt.date(r.invoice_date)),
+          h('td', { class: 'ltr' }, r.entry_ref), h('td', { class: 'num' }, N(r.amount)), h('td', { class: 'num' }, N(r.settled)), h('td', { class: neg(r.remaining) }, N(r.remaining)),
+          h('td', { class: 'num' }, Math.abs(Number(r.remaining)) < 0.005 ? '' : r.age_days), h('td', {}, st(r))))
+          : h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'لا توجد فواتير'))),
+        h('tfoot', {}, h('tr', {}, h('td', { colspan: 5 }, `${rows.length} فاتورة`), h('td', { class: 'num' }, N(sum('amount'))), h('td', { class: 'num' }, N(sum('settled'))),
+          h('td', { class: 'num' }, N(sum('remaining'))), h('td', { colspan: 2 })))))));
+    return { name: 'الفواتير', aoa: [['الطرف', 'الحساب', 'رقم الفاتورة', 'تاريخ الفاتورة', 'القيد', 'القيمة', 'المسدد', 'المتبقي', 'العمر'],
+      ...rows.map((r) => [r.party_name, `${r.account_code} — ${r.account_name}`, r.invoice_no, r.invoice_date, r.entry_ref, Number(r.amount), Number(r.settled), Number(r.remaining), r.age_days])] };
+  });
+  show.addEventListener('change', go);
+  go();
 }

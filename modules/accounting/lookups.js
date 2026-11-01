@@ -9,14 +9,20 @@ export function clearLookups() { cache.clear(); }
 
 export async function loadLookups(company, { force = false } = {}) {
   if (!force && cache.has(company)) return cache.get(company);
-  const [accounts, parties, employees, projects, costCenters, equipment] = await Promise.all([
+  const [accounts, parties, employees, projects, costCenters, equipment, settings] = await Promise.all([
     acc.from('accounts').select('*').eq('company_id', company).eq('status', 'active').order('code'),
     core.from('parties').select('id, code, name, is_customer, is_supplier, tax_number').eq('status', 'active').order('code'),
     core.from('employees').select('id, employee_no, full_name, company_id, end_date').eq('company_id', company).eq('status', 'active').order('employee_no'),
     core.from('v_projects').select('id, code, name, companies, phase').eq('status', 'active').order('code'),
     core.from('cost_centers').select('id, code, name, company_id').eq('status', 'active').order('code'),
     core.from('equipment').select('id, code, name, company_id').eq('status', 'active').order('code'),
+    core.from('settings').select('key, company_id, value').in('key', ['vat.rate', 'vat.period']).eq('status', 'active'),
   ]);
+  const setting = (k, d) => {
+    const rows = (settings.data || []).filter((r) => r.key === k);
+    const r = rows.find((x) => x.company_id === company) || rows.find((x) => !x.company_id);
+    return r ? r.value : d;
+  };
   const opt = (r, code, name) => ({ id: r.id, code, name, label: `${code} — ${name}`, row: r });
   const lk = {
     company,
@@ -28,6 +34,8 @@ export async function loadLookups(company, { force = false } = {}) {
     costCenters: (costCenters.data || []).filter((c) => !c.company_id || c.company_id === company).map((r) => opt(r, r.code, r.name)),
     equipment: (equipment.data || []).map((r) => opt(r, r.code, r.name + (r.company_id !== company ? ` (${state.companyName(r.company_id)})` : ''))),
   };
+  lk.vatRate = Number(setting('vat.rate', 0.15)) || 0.15;
+  lk.vatPeriod = setting('vat.period', 'quarterly');
   lk.postable = lk.accounts.filter((a) => a.row.is_postable);
   lk.customers = lk.parties.filter((p) => p.row.is_customer);
   lk.suppliers = lk.parties.filter((p) => p.row.is_supplier);
@@ -100,6 +108,7 @@ export const RULES = [['forbidden', 'ممنوع'], ['optional', 'اختياري'
 export const typeLabel = (t) => (ACCOUNT_TYPES.find((x) => x[0] === t) || [t, t])[1];
 export const ENTRY_TYPES = { regular: 'عادي', opening: 'افتتاحي', reversal: 'عكسي', adjustment: 'تسوية', closing: 'إقفال' };
 export const SOURCES = { manual: 'يدوي', proposed: 'مقترح', reversal: 'عكس' };
+export const TAX_CATEGORIES = { standard: 'أساسي', zero: 'صفري', exempt: 'معفى' };
 
 export function yearStart() { return new Date().getFullYear() + '-01-01'; }
 export function today() { return new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10); }
