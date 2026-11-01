@@ -2,7 +2,7 @@
 import { acc, rpc, errMsg } from '../../shared/sb.js';
 import { h, modal, toast, fmt } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
-import { loadLookups, picker, companySelect, yearStart, today, typeLabel } from './lookups.js';
+import { loadLookups, picker, companySelect, yearStart, today, typeLabel, parseAcc } from './lookups.js';
 import { openEntry } from './register.js';
 
 const N = (v) => (v === null || v === undefined || v === '' ? '' : fmt.num(v));
@@ -91,7 +91,10 @@ export async function renderStatement(el) {
   let accP, partyP, projP, eqP;
   async function reload() {
     lk = await loadLookups(company);
-    accP = picker({ options: lk.accounts, listKey: 'allacc-' + company, placeholder: 'اختر الحساب' }); accP.el.style.minWidth = '240px';
+    // الحساب أو اسم المورد/العميل (يختار حسابه والطرف معًا)
+    accP = picker({ options: [...lk.accounts, ...lk.accountOptions.filter((x) => x.combo)], listKey: 'allaccx-' + company, placeholder: 'الحساب أو المورد/العميل',
+      onChange: (o) => { if (o?.combo) partyP.set(o.party); } });
+    accP.el.style.minWidth = '260px';
     partyP = picker({ options: [...lk.parties, ...lk.employees.map((x) => ({ ...x, label: x.label + ' (موظف)', emp: true }))], listKey: 'partyemp-' + company, placeholder: 'الطرف أو الموظف (اختياري)' });
     partyP.el.style.minWidth = '220px';
     projP = picker({ options: lk.allProjects, listKey: 'allproj', placeholder: 'المشروع (اختياري)' });
@@ -109,9 +112,10 @@ export async function renderStatement(el) {
     let rows; let title;
     if (kind.value === 'account') {
       if (!accP.id) throw new Error('اختر الحساب');
-      rows = await rpc('account_statement', { p_account: accP.id, p_from: from.value, p_to: to.value,
+      const accId = parseAcc(accP.id).account;
+      rows = await rpc('account_statement', { p_account: accId, p_from: from.value, p_to: to.value,
         p_party: isEmp ? null : partyP.id, p_employee: isEmp ? partyP.id : null, p_project: projP.id, p_equipment: eqP.id }, 'accounting');
-      title = 'كشف حساب ' + lk.byId('accounts', accP.id).label;
+      title = 'كشف حساب ' + lk.byId('accounts', accId).label + (pOpt ? ' — ' + pOpt.name : '');
     } else {
       if (!partyP.id) throw new Error('اختر الطرف أو الموظف');
       rows = await rpc('party_statement', { p_company: company, p_party: isEmp ? null : partyP.id, p_employee: isEmp ? partyP.id : null, p_from: from.value, p_to: to.value }, 'accounting');
@@ -424,7 +428,7 @@ export async function renderInvoices(el) {
   const slot = h('span', { style: { display: 'contents' } });
   async function reload() {
     lk = await loadLookups(company);
-    partyP = picker({ options: lk.parties, listKey: 'party', placeholder: 'كل الأطراف' }); partyP.el.style.minWidth = '220px';
+    partyP = picker({ options: lk.parties, listKey: 'party-' + company, placeholder: 'كل الأطراف' }); partyP.el.style.minWidth = '220px';
     slot.replaceChildren(partyP.el);
   }
   await reload();
@@ -432,22 +436,25 @@ export async function renderInvoices(el) {
     partyP.resolve();
     const all = await rpc('open_invoices', { p_company: company, p_as_of: asOf.value, p_party: partyP.id }, 'accounting');
     const rows = show.value === 'open' ? all.filter((r) => Math.abs(Number(r.remaining)) >= 0.005) : all;
-    const st = (r) => (Math.abs(Number(r.remaining)) < 0.005 ? h('span', { class: 'badge ok' }, 'مسددة') : Number(r.settled) > 0 ? h('span', { class: 'badge warn' }, 'جزئي') : h('span', { class: 'badge' }, 'مفتوحة'));
+    const unalloc = (r) => !r.invoice_no;
+    const st = (r) => (unalloc(r) ? h('span', { class: 'badge warn' }, Number(r.remaining) < 0 ? 'دفعة غير موزعة' : 'غير موزع')
+      : Number(r.amount) === 0 ? h('span', { class: 'badge warn' }, 'لا توجد فاتورة بهذا الرقم')
+      : Math.abs(Number(r.remaining)) < 0.005 ? h('span', { class: 'badge ok' }, 'مسددة') : Number(r.settled) > 0 ? h('span', { class: 'badge warn' }, 'جزئي') : h('span', { class: 'badge' }, 'مفتوحة'));
     const sum = (k) => rows.reduce((s, r) => s + Number(r[k]), 0);
     out.replaceChildren(h('div', { class: 'card' },
       h('div', { class: 'toolbar' }, h('strong', {}, `الفواتير — ${state.companyName(company)}`),
-        h('span', { class: 'help' }, 'من رقم الفاتورة المكتوب على سطر حساب العميل أو المورد. السداد يُربط بالفاتورة بكتابة نفس الرقم على سطر السداد.')),
+        h('span', { class: 'help' }, 'من رقم الفاتورة المكتوب على سطر حساب العميل أو المورد. السداد يُربط بالفاتورة بكتابة نفس الرقم على سطر السداد، والسداد بدون رقم يظهر "غير موزع" — توزّعه بتعديل القيد وتقسيم السطر على أرقام الفواتير.')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
         h('thead', {}, h('tr', {}, ['الطرف', 'الحساب', 'رقم الفاتورة', 'تاريخ الفاتورة', 'القيد', 'القيمة', 'المسدد', 'المتبقي', 'العمر (يوم)', 'الحالة'].map((t) => h('th', {}, t)))),
         h('tbody', {}, rows.length ? rows.map((r) => h('tr', { onclick: () => openEntry(r.entry_id) },
-          h('td', {}, r.party_name), h('td', {}, `${r.account_code} — ${r.account_name}`), h('td', { class: 'ltr' }, r.invoice_no), h('td', {}, fmt.date(r.invoice_date)),
+          h('td', {}, r.party_name), h('td', {}, `${r.account_code} — ${r.account_name}`), unalloc(r) ? h('td', { class: 'muted' }, 'بدون رقم فاتورة') : h('td', { class: 'ltr' }, r.invoice_no), h('td', {}, r.invoice_date ? fmt.date(r.invoice_date) : ''),
           h('td', { class: 'ltr' }, r.entry_ref), h('td', { class: 'num' }, N(r.amount)), h('td', { class: 'num' }, N(r.settled)), h('td', { class: neg(r.remaining) }, N(r.remaining)),
           h('td', { class: 'num' }, Math.abs(Number(r.remaining)) < 0.005 ? '' : r.age_days), h('td', {}, st(r))))
           : h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'لا توجد فواتير'))),
         h('tfoot', {}, h('tr', {}, h('td', { colspan: 5 }, `${rows.length} فاتورة`), h('td', { class: 'num' }, N(sum('amount'))), h('td', { class: 'num' }, N(sum('settled'))),
           h('td', { class: 'num' }, N(sum('remaining'))), h('td', { colspan: 2 })))))));
     return { name: 'الفواتير', aoa: [['الطرف', 'الحساب', 'رقم الفاتورة', 'تاريخ الفاتورة', 'القيد', 'القيمة', 'المسدد', 'المتبقي', 'العمر'],
-      ...rows.map((r) => [r.party_name, `${r.account_code} — ${r.account_name}`, r.invoice_no, r.invoice_date, r.entry_ref, Number(r.amount), Number(r.settled), Number(r.remaining), r.age_days])] };
+      ...rows.map((r) => [r.party_name, `${r.account_code} — ${r.account_name}`, r.invoice_no || 'بدون رقم فاتورة (غير موزع)', r.invoice_date || '', r.entry_ref, Number(r.amount), Number(r.settled), Number(r.remaining), r.age_days])] };
   });
   show.addEventListener('change', go);
   go();

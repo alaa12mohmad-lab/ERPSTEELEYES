@@ -1,8 +1,8 @@
 // محرر القيود شبه Excel: يُستخدم في صفحة القيود الجديدة وفي نافذة تعديل قيد محفوظ
 //   كل قيد: تاريخ، بيان، نوع، وأسطر. كل سطر: حساب، مدين/دائن، طرف، فاتورة، ضريبة، مشروع، مركز، معدة، بيان
 import { rpc } from '../../shared/sb.js';
-import { h, fmt, store, modal, icon } from '../../shared/ui.js';
-import { picker, ENTRY_TYPES, TAX_CATEGORIES, today } from './lookups.js';
+import { h, fmt, store, modal, icon, toast } from '../../shared/ui.js';
+import { picker, ENTRY_TYPES, TAX_CATEGORIES, today, parseAcc, rememberPartyAccount } from './lookups.js';
 
 export const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '').trim()); return isFinite(n) ? n : 0; };
 export const round2 = (n) => Math.round(n * 100) / 100;
@@ -45,6 +45,35 @@ export function chooseColumns(onDone) {
     h('button', { class: 'btn', onclick: () => { store.set(COLS_KEY, []); m.close(); onDone?.(); } }, 'إظهار الكل'));
 }
 
+// إضافة طرف سريعة من داخل القيد: الاسم والنوع والرقم الضريبي، ويتعمل له كارت في العملاء والموردين
+export function quickAddParty(lk, { kind = 'supplier', name = '' } = {}) {
+  return new Promise((resolve) => {
+    let done = false;
+    const m = modal({ title: 'إضافة طرف جديد', size: 'narrow', onClose: () => { if (!done) resolve(null); } });
+    const nm = h('input', { class: 'input', value: name, placeholder: 'اسم المورد أو العميل' });
+    const type = h('select', { class: 'input' }, [['supplier', 'مورد'], ['customer', 'عميل'], ['both', 'مورد وعميل']].map(([v, t]) => h('option', { value: v, selected: v === kind }, t)));
+    const tax = h('input', { class: 'input', dir: 'ltr', inputmode: 'numeric', maxlength: 15, placeholder: '15 رقم (اختياري)' });
+    const err = h('p', { class: 'notice bad', style: { display: 'none', marginTop: '10px' } });
+    m.body.append(h('div', { class: 'form-grid' },
+      h('div', { class: 'field wide' }, h('label', {}, 'الاسم', h('span', { class: 'req' }, '*')), nm),
+      h('div', { class: 'field' }, h('label', {}, 'النوع'), type),
+      h('div', { class: 'field' }, h('label', {}, 'الرقم الضريبي'), tax)),
+      h('p', { class: 'muted', style: { marginTop: '10px', fontSize: '12px' } }, 'الكود يتولّد تلقائيًا، وباقي البيانات تكملها بعدين من شاشة العملاء والموردين.'), err);
+    const save = async () => {
+      err.style.display = 'none';
+      try {
+        const t = type.value;
+        const r = await rpc('quick_add_party', { p_name: nm.value, p_customer: t !== 'supplier', p_supplier: t !== 'customer', p_tax: tax.value || null }, 'accounting');
+        const o = lk.addParty({ id: r.id, code: r.code, name: r.name, is_customer: t !== 'supplier', is_supplier: t !== 'customer', tax_number: tax.value || null });
+        done = true; m.close(); toast(`اتضاف ${r.code} — ${r.name}`, 'ok'); resolve(o);
+      } catch (x) { err.textContent = x.message; err.style.display = ''; }
+    };
+    [nm, tax].forEach((i) => i.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); save(); } }));
+    m.foot.append(h('button', { class: 'btn primary', onclick: save }, 'إضافة'), h('button', { class: 'btn', onclick: () => m.close() }, 'رجوع'));
+    setTimeout(() => nm.focus(), 0);
+  });
+}
+
 // opts: { lk, company, entries, single, excludeEntry, onChange }
 export function createEditor(opts) {
   const { lk, company, single = false, excludeEntry = null } = opts;
@@ -81,9 +110,10 @@ export function createEditor(opts) {
   const canCategory = (l) => { const a = accRow(l.account_id); return !!a && a.vat_role === 'none' && ['revenue', 'expense', 'asset'].includes(a.account_type); };
   const taxLine = (l) => isVat(l) || (canCategory(l) && ['zero', 'exempt'].includes(l.tax_category));
 
-  // سطر الضريبة (أو الصفري/المعفى) يأخذ الطرف ورقم الفاتورة وتاريخها من باقي القيد لو قيمة واحدة.
-  //   القيمة المنقولة تلقائيًا تتحدّث لو تغيّر مصدرها، ولو كتبها المستخدم بنفسه لا تُلمس.
-  //   تاريخ الفاتورة الافتراضي = تاريخ القيد (حتى يكتب المستخدم تاريخًا آخر)
+  // النقل التلقائي داخل القيد (القيمة المنقولة تتحدّث لو تغيّر مصدرها، ولو كتبها المستخدم بنفسه لا تُلمس):
+  //   رقم الفاتورة: لو القيد فيه رقم واحد يتنقل لكل الأسطر الفاضية (مرجع للتتبع)
+  //   الطرف: لو القيد فيه طرف واحد يتنقل لسطر الضريبة ولكل سطر حسابه لا يخص أطرافًا (مرجع فقط، لا يدخل أرصدة الأطراف)
+  //   تاريخ الفاتورة: لأي سطر فيه رقم فاتورة = تاريخ الفاتورة الوحيد في القيد، وإلا تاريخ القيد
   function autofill(e) {
     const src = (k) => [...new Set(e.lines.filter((l) => !l._auto?.[k]).map((l) => (typeof l[k] === 'string' ? l[k].trim() : l[k])).filter(Boolean))];
     const parties = src('party_id'), invs = src('invoice_no'), dates = src('invoice_date');
@@ -91,16 +121,16 @@ export function createEditor(opts) {
       const c = ctrls.get(l); if (!c) return;
       const a = l._auto || (l._auto = {});
       const put = (k, v) => {
-        if (l[k] === v) return;
-        l[k] = v; a[k] = true;
+        v = v || (k === 'party_id' ? null : '');
+        if ((l[k] || null) === (v || null)) { if (!v) a[k] = false; return; }
+        l[k] = v; a[k] = !!v;
         if (k === 'party_id') c.partyP.set(v); else if (k === 'invoice_no') c.invNo.value = v; else c.invDate.value = v;
       };
-      if (taxLine(l)) {
-        if ((!l.party_id || a.party_id) && !l.employee_id && parties.length === 1) put('party_id', parties[0]);
-        if ((!l.invoice_no || a.invoice_no) && invs.length === 1) put('invoice_no', invs[0]);
-        if ((!l.invoice_date || a.invoice_date) && dates.length === 1) put('invoice_date', dates[0]);
-      }
-      if ((l.invoice_no || '').trim() && (!l.invoice_date || (a.invoice_date && !(taxLine(l) && dates.length === 1)))) put('invoice_date', e.entry_date || '');
+      const row = accRow(l.account_id);
+      const refOnly = !!row && (!row.party_kind || taxLine(l));
+      if (!l.party_id || a.party_id) { if (refOnly && !l.employee_id) put('party_id', parties.length === 1 ? parties[0] : null); else if (a.party_id) put('party_id', null); }
+      if (!l.invoice_no || a.invoice_no) put('invoice_no', l.account_id && invs.length === 1 ? invs[0] : '');
+      if (!l.invoice_date || a.invoice_date) put('invoice_date', (l.invoice_no || '').trim() ? (dates.length === 1 ? dates[0] : e.entry_date) : '');
       c.refreshTax();
     });
   }
@@ -132,7 +162,7 @@ export function createEditor(opts) {
         const tr = h('tr', { 'data-e': ei, 'data-l': li, class: 'je-row' + (ei % 2 ? ' alt' : '') + (li === 0 ? ' first' : '') + (errorAt && errorAt.e === ei && (errorAt.l === null || errorAt.l === li) ? ' err' : '') });
         if (li === 0) {
           const typeSel = h('select', { class: 'input cell-input', 'data-f': 'type', title: 'نوع القيد' },
-            ['regular', 'opening', 'adjustment'].map((t) => h('option', { value: t, selected: e.entry_type === t }, ENTRY_TYPES[t])));
+            ['regular', 'opening', 'adjustment', 'vat_settlement'].map((t) => h('option', { value: t, selected: e.entry_type === t }, ENTRY_TYPES[t])));
           typeSel.addEventListener('change', () => { e.entry_type = typeSel.value; changed(); });
           const dateIn = h('input', { class: 'input cell-input', type: 'date', value: e.entry_date || '', 'data-f': 'date', title: 'تاريخ القيد' });
           dateIn.addEventListener('change', () => { e.entry_date = dateIn.value; autofill(e); changed(); scheduleCheck(e); });
@@ -200,11 +230,26 @@ export function createEditor(opts) {
   }
 
   function lineCells(e, ei, l, li) {
-    const accP = picker({ options: lk.postable, listKey: 'acc-' + company, value: l.account_id, placeholder: 'الحساب', cls: 'acc' });
+    // خانة الحساب تقبل الحساب أو اسم المورد/العميل (يختار حسابه ويسجّل الطرف)
+    const accValue = () => (l.party_id && lk.isPartyAccount(l.account_id) ? lk.ensureCombo(l.party_id, l.account_id) : l.account_id);
+    const accP = picker({ options: lk.accountOptions, listKey: 'accx-' + company, value: accValue(), placeholder: 'الحساب أو المورد/العميل', cls: 'acc',
+      onSpecial: async (_, typed) => {
+        const o = await quickAddParty(lk, { name: '' });
+        if (!o) return;
+        const c = lk.accountOptions.find((x) => x.combo && x.party === o.id);
+        if (!c) { toast('الطرف اتضاف، لكن مفيش حساب موردين/عملاء في الشجرة يقبله — اختار الحساب واكتب الطرف في خانته', 'warn'); return; }
+        accP.set(c.id); onAcc();
+      } });
     accP.el.dataset.f = 'account';
     const dr = h('input', { class: 'input cell-input num', inputmode: 'decimal', value: l.debit, 'data-f': 'debit' });
     const cr = h('input', { class: 'input cell-input num', inputmode: 'decimal', value: l.credit, 'data-f': 'credit' });
-    const partyP = picker({ options: lk.parties, listKey: 'party', value: l.party_id || l.employee_id, placeholder: 'الطرف' }); partyP.el.dataset.f = 'party';
+    const partyP = picker({ options: lk.partyLists.party, listKey: 'party+', value: l.party_id || l.employee_id, placeholder: 'الطرف',
+      onSpecial: async () => {
+        const kind = accRow(l.account_id)?.party_kind === 'customer' || accRow(l.account_id)?.vat_role === 'output' ? 'customer' : 'supplier';
+        const o = await quickAddParty(lk, { kind });
+        if (o) { partyP.set(o.id); onParty(); }
+      } });
+    partyP.el.dataset.f = 'party';
     const invNo = h('input', { class: 'input cell-input inv', value: l.invoice_no || '', placeholder: 'رقم الفاتورة', 'data-f': 'inv', dir: 'ltr' });
     const invSt = h('span', { class: 'inv-st' });
     const invDate = h('input', { class: 'input cell-input', type: 'date', value: l.invoice_date || '', 'data-f': 'invdate' });
@@ -231,7 +276,7 @@ export function createEditor(opts) {
       base.title = off ? `الضريبة ${fmt.num(amt)} لا تساوي ${rate * 100}% من المبلغ الخاضع (${fmt.num(round2(b * rate))}) — راجع الفاتورة` : 'المبلغ الخاضع للضريبة (قبل الضريبة)';
       const t = taxLine(l);
       [invNo, invDate].forEach((x) => x.classList.toggle('req', t));
-      if (t && !partyP.el.disabled) partyP.el.classList.add('req');
+      partyP.el.classList.toggle('req', t || accRow(l.account_id)?.party_rule === 'required');
     };
     const setInvStatus = (r) => {
       invSt.className = 'inv-st' + (r ? ' ' + r.level : '');
@@ -242,26 +287,22 @@ export function createEditor(opts) {
     };
     ctrls.set(l, { partyP, invNo, invDate, refreshTax, setInvStatus });
 
+    // الطرف متاح في كل سطر (مرجع للتتبع). القائمة تتصفى حسب نوع الحساب، والإجباري يتعلّم
     const applyRules = (a) => {
       const r = a?.row;
-      const setRule = (p, rule) => {
-        p.el.classList.toggle('req', rule === 'required');
-        if (rule === 'forbidden') p.setDisabled(true); else p.el.disabled = false;
-      };
-      if (!r) { [partyP, projP, ccP, eqP].forEach((p) => { p.el.disabled = false; p.el.classList.remove('req'); }); refreshTax(); return; }
+      const setRule = (p, rule) => p.el.classList.toggle('req', rule === 'required');
+      if (!r) { [partyP, projP, ccP, eqP].forEach((p) => p.el.classList.remove('req')); refreshTax(); return; }
       const kind = r.party_kind || (r.vat_role === 'input' ? 'supplier' : r.vat_role === 'output' ? 'customer' : null);
-      const list = kind === 'employee' ? [lk.employees, 'emp-' + company] : kind === 'customer' ? [lk.customers, 'cust'] : kind === 'supplier' ? [lk.suppliers, 'supp'] : [lk.parties, 'party'];
-      // سطر الضريبة يقبل الطرف دائمًا (للإقرار) حتى لو الحساب لا يقبل طرفًا عادةً
-      const partyRule = r.vat_role !== 'none' && r.party_rule === 'forbidden' ? 'optional' : r.party_rule;
-      if (partyRule !== 'forbidden' || canCategory(l)) partyP.setOptions(list[0], list[1]);
-      setRule(partyP, partyRule === 'forbidden' && canCategory(l) && l.tax_category ? 'optional' : partyRule);
+      const list = kind === 'employee' ? [lk.employees, 'emp-' + company] : kind === 'customer' ? [lk.partyLists.cust, 'cust+'] : kind === 'supplier' ? [lk.partyLists.supp, 'supp+'] : [lk.partyLists.party, 'party+'];
+      partyP.setOptions(list[0], list[1]);
+      setRule(partyP, r.party_rule);
       setRule(projP, r.project_rule); setRule(ccP, r.cost_center_rule); setRule(eqP, r.equipment_rule);
-      partyP.el.placeholder = partyP.el.disabled ? '' : ({ employee: 'الموظف', customer: 'العميل', supplier: 'المورد' }[kind] || 'الطرف');
+      partyP.el.placeholder = ({ employee: 'الموظف', customer: 'العميل', supplier: 'المورد' }[kind] || 'الطرف');
       syncParty();
       refreshTax();
     };
     const syncParty = () => {
-      const kind = accRow(accP.id)?.party_kind;
+      const kind = accRow(l.account_id)?.party_kind;
       if (kind === 'employee') { l.employee_id = partyP.id; l.party_id = null; } else { l.party_id = partyP.id; l.employee_id = null; }
     };
 
@@ -269,15 +310,37 @@ export function createEditor(opts) {
     if (initialAcc) { applyRules(initialAcc); partyP.set(l.party_id || l.employee_id); } else refreshTax();
 
     const after = (fn) => () => setTimeout(() => { fn(); changed(); }, 0);
-    accP.el.addEventListener('change', after(() => { l.account_id = accP.id; applyRules(lk.byId('accounts', accP.id)); autofill(e); scheduleCheck(e); }));
+    // اختيار الحساب: لو اختار طرفًا (مورد ← حسابه) يتسجل الحساب والطرف معًا ويتحفظ كحساب افتراضي للطرف
+    const rememberDefault = () => {
+      const r = accRow(l.account_id); const p = l.party_id && lk.byId('parties', l.party_id);
+      if (!r || !p || !lk.isPartyAccount(l.account_id)) return;
+      const role = ['customer', 'supplier'].includes(r.party_kind) ? r.party_kind : p.row.is_supplier ? 'supplier' : 'customer';
+      rememberPartyAccount(company, l.party_id, role, l.account_id);
+    };
+    function onAcc() {
+      const { account, party } = parseAcc(accP.id);
+      const wasParty = lk.isPartyAccount(l.account_id);
+      l.account_id = account;
+      applyRules(lk.byId('accounts', account));
+      if (party) { partyP.set(party); syncParty(); manual(l, 'party_id'); rememberDefault(); }
+      else if (lk.isPartyAccount(account) && l.party_id) { accP.set(lk.ensureCombo(l.party_id, account)); rememberDefault(); }
+      else if (wasParty && !lk.isPartyAccount(account) && l.party_id && !l._auto?.party_id) { partyP.set(null); syncParty(); }
+      autofill(e); scheduleCheck(e);
+    }
+    function onParty() {
+      syncParty(); manual(l, 'party_id');
+      if (lk.isPartyAccount(l.account_id)) { accP.set(l.party_id ? lk.ensureCombo(l.party_id, l.account_id) : l.account_id); rememberDefault(); }
+      autofill(e); scheduleCheck(e); changed();
+    }
+    accP.el.addEventListener('change', after(onAcc));
     dr.addEventListener('input', () => { l.debit = dr.value; if (dr.value.trim()) { cr.value = ''; l.credit = ''; } updateBadge(ei); refreshTax(); changed(); scheduleCheck(e); });
     cr.addEventListener('input', () => { l.credit = cr.value; if (cr.value.trim()) { dr.value = ''; l.debit = ''; } updateBadge(ei); refreshTax(); changed(); scheduleCheck(e); });
-    partyP.el.addEventListener('change', after(() => { syncParty(); manual(l, 'party_id'); autofill(e); scheduleCheck(e); }));
+    partyP.el.addEventListener('change', () => setTimeout(onParty, 0));
     invNo.addEventListener('input', () => { l.invoice_no = invNo.value; manual(l, 'invoice_no'); changed(); });
     invNo.addEventListener('change', () => { autofill(e); changed(); scheduleCheck(e); });
     invDate.addEventListener('change', () => { l.invoice_date = invDate.value; manual(l, 'invoice_date'); autofill(e); changed(); scheduleCheck(e); });
     base.addEventListener('input', () => { l.tax_base = base.value; refreshTax(); changed(); });
-    cat.addEventListener('change', () => { l.tax_category = cat.value; applyRules(lk.byId('accounts', accP.id)); autofill(e); changed(); });
+    cat.addEventListener('change', () => { l.tax_category = cat.value; applyRules(lk.byId('accounts', l.account_id)); autofill(e); changed(); });
     projP.el.addEventListener('change', after(() => { l.project_id = projP.id; }));
     ccP.el.addEventListener('change', after(() => { l.cost_center_id = ccP.id; }));
     eqP.el.addEventListener('change', after(() => { l.equipment_id = eqP.id; }));

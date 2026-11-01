@@ -3,7 +3,7 @@ import { acc, rpc, updateRow } from '../../shared/sb.js';
 import { h, modal, toast, confirmDialog } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { renderMaster, opts } from '../../shared/master.js';
-import { companySelect, clearLookups, ACCOUNT_TYPES, RULES, typeLabel } from './lookups.js';
+import { companySelect, clearLookups, ACCOUNT_TYPES, RULES, PARTY_RULES, typeLabel } from './lookups.js';
 
 const BS = [['current_asset', 'أصول متداولة'], ['noncurrent_asset', 'أصول غير متداولة'], ['current_liability', 'التزامات متداولة'],
   ['noncurrent_liability', 'التزامات غير متداولة'], ['equity', 'حقوق ملكية']];
@@ -47,7 +47,7 @@ export function renderAccounts(el) {
       filter: (q) => q.eq('company_id', company),
       order: [{ col: 'sort_path' }],
       searchKeys: ['code', 'name'],
-      defaults: () => ({ company_id: company, is_postable: true, party_rule: 'forbidden', project_rule: 'optional', cost_center_rule: 'optional', equipment_rule: 'optional', vat_role: 'none' }),
+      defaults: () => ({ company_id: company, is_postable: true, party_rule: 'optional', project_rule: 'optional', cost_center_rule: 'optional', equipment_rule: 'optional', vat_role: 'none' }),
       columns: [
         { key: 'code', label: 'الكود', render: (r) => h('span', { class: 'ltr', style: { fontWeight: r.is_postable ? 400 : 700 } }, r.code) },
         { key: 'name', label: 'الاسم', render: (r) => h('span', { style: { paddingInlineStart: (r.depth * 22) + 'px', fontWeight: r.is_postable ? 400 : 700 } }, r.name) },
@@ -55,7 +55,7 @@ export function renderAccounts(el) {
         { key: 'is_postable', label: 'الإدخال', render: (r) => (r.is_postable ? 'قابل للإدخال' : h('span', { class: 'badge' }, 'مجمّع')) },
         { key: 'cls', label: 'التبويب', render: (r) => (r.is_postable ? [lbl(BS, r.bs_section) || lbl(INC, r.income_level), lbl(CF, r.cashflow_class)].filter(Boolean).join(' • ') : '') },
         { key: 'rules', label: 'طرف / مشروع / مركز / معدة', render: (r) => (r.is_postable
-          ? `${r.party_rule === 'forbidden' ? '—' : ruleShort[r.party_rule] + ' (' + lbl(PK, r.party_kind) + ')'} / ${ruleShort[r.project_rule]} / ${ruleShort[r.cost_center_rule]} / ${ruleShort[r.equipment_rule]}` : '') },
+          ? `${r.party_kind ? ruleShort[r.party_rule] + ' (' + lbl(PK, r.party_kind) + ')' : '—'} / ${ruleShort[r.project_rule]} / ${ruleShort[r.cost_center_rule]} / ${ruleShort[r.equipment_rule]}` : '') },
         { key: 'flags', label: 'خصائص', render: (r) => [r.is_cash_account && 'نقدية', r.is_control_account && 'رقابة', r.vat_role !== 'none' && lbl(VAT, r.vat_role)].filter(Boolean).join('، ') },
       ],
       fields: [
@@ -72,8 +72,10 @@ export function renderAccounts(el) {
         { key: 'bs_section', label: 'قسم المركز المالي', type: 'select', options: opts.list(BS), help: 'لحسابات الأصول والالتزامات وحقوق الملكية' },
         { key: 'income_level', label: 'مستوى قائمة الدخل', type: 'select', options: opts.list(INC), help: 'للإيرادات والمصروفات' },
         { key: 'cashflow_class', label: 'تصنيف التدفق النقدي', type: 'select', options: opts.list(CF), help: 'حسابات الصندوق والبنوك = نقدية' },
-        { key: 'party_rule', label: 'الطرف', type: 'select', required: true, default: 'forbidden', options: opts.list(RULES) },
-        { key: 'party_kind', label: 'نوع الطرف', type: 'select', options: opts.list(PK) },
+        { key: 'party_kind', label: 'حساب أطراف', type: 'select', options: opts.list(PK),
+          help: 'لحسابات العملاء والموردين وذمم الموظفين (أصل أو التزام): أرصدة الأطراف وكشوفها والفواتير تتحسب منها. في حساب إيراد أو مصروف يحدد قائمة الطرف فقط ولا يدخل الأرصدة. سيبه فاضي لو الطرف مجرد مرجع للتتبع' },
+        { key: 'party_rule', label: 'الطرف في السطر', type: 'select', required: true, default: 'optional', options: opts.list(PARTY_RULES),
+          help: 'إجباري: لازم يتكتب طرف في كل سطر على الحساب' },
         { key: 'project_rule', label: 'المشروع', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
         { key: 'cost_center_rule', label: 'مركز التكلفة', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
         { key: 'equipment_rule', label: 'المعدة', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
@@ -87,8 +89,8 @@ export function renderAccounts(el) {
       beforeSave: (v, rec) => {
         const out = {};
         if (rec.company_id === undefined || !rec.id) out.company_id = company;
-        if (v.party_rule === 'forbidden') out.party_kind = null;
-        if (v.party_rule && v.party_rule !== 'forbidden' && !v.party_kind) throw new Error('حدد نوع الطرف');
+        if (v.party_rule === 'forbidden') out.party_rule = 'optional';
+        if (v.party_rule === 'required' && !v.party_kind) throw new Error('الطرف الإجباري يحتاج تحديد نوع حساب الأطراف');
         if (v.is_postable) {
           if (!v.cashflow_class) throw new Error('حدد تصنيف التدفق النقدي');
           if (['asset', 'liability', 'equity'].includes(v.account_type) && !v.bs_section) throw new Error('حدد قسم المركز المالي');
