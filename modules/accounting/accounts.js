@@ -81,7 +81,8 @@ export function renderAccounts(el) {
         { key: 'equipment_rule', label: 'المعدة', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
         { key: 'is_cash_account', label: 'حساب نقدية (يمنع الرصيد السالب)', type: 'bool' },
         { key: 'is_control_account', label: 'حساب رقابة (عملاء / موردين / عهد)', type: 'bool' },
-        { key: 'vat_role', label: 'الضريبة', type: 'select', required: true, default: 'none', options: opts.list(VAT) },
+        { key: 'vat_role', label: 'الضريبة', type: 'select', required: true, default: 'none', options: opts.list(VAT),
+          help: 'لحساب ضريبة المدخلات (أصل) أو المخرجات (التزام) فقط. المصروفات والإيرادات: بدون ضريبة' },
         { key: 'is_noncash_adjustment', label: 'تسوية غير نقدية (مجمع إهلاك / مخصصات)', type: 'bool' },
         { key: 'cashflow_line', label: 'بند التدفق (الطريقة المباشرة)', help: 'اختياري' },
         { key: 'notes', label: 'ملاحظات', type: 'textarea' },
@@ -90,6 +91,7 @@ export function renderAccounts(el) {
         const out = {};
         if (rec.company_id === undefined || !rec.id) out.company_id = company;
         if (v.party_rule === 'forbidden') out.party_rule = 'optional';
+        if (v.vat_role && v.vat_role !== 'none' && !['asset', 'liability'].includes(v.account_type)) throw new Error('حساب الضريبة لازم يكون أصل (مدخلات) أو التزام (مخرجات) — المصروف أو الإيراد يتعلّم "بدون ضريبة"');
         if (v.party_rule === 'required' && !v.party_kind) throw new Error('الطرف الإجباري يحتاج تحديد نوع حساب الأطراف');
         if (v.is_postable) {
           if (!v.cashflow_class) throw new Error('حدد تصنيف التدفق النقدي');
