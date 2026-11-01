@@ -1,7 +1,7 @@
 // محرر القيود شبه Excel: يُستخدم في صفحة القيود الجديدة وفي نافذة تعديل قيد محفوظ
 //   كل قيد: تاريخ، بيان، نوع، وأسطر. كل سطر: حساب، مدين/دائن، طرف، فاتورة، ضريبة، مشروع، مركز، معدة، بيان
 import { rpc } from '../../shared/sb.js';
-import { h, fmt } from '../../shared/ui.js';
+import { h, fmt, store, modal, icon } from '../../shared/ui.js';
 import { picker, ENTRY_TYPES, TAX_CATEGORIES, today } from './lookups.js';
 
 export const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '').trim()); return isFinite(n) ? n : 0; };
@@ -24,7 +24,26 @@ export function lineFromSaved(l) {
     tax_base: l.tax_base ? String(l.tax_base) : '', tax_category: l.tax_category && l.tax_category !== 'standard' ? l.tax_category : '' };
 }
 
-const COLS = ['القيد', 'التاريخ', 'البيان', 'الحساب', 'مدين', 'دائن', 'الطرف', 'رقم الفاتورة', 'تاريخ الفاتورة', 'الضريبة', 'المشروع', 'مركز التكلفة', 'المعدة', 'بيان السطر', ''];
+// أعمدة الصفحة. الاختيارية يقدر المستخدم يخفيها، وتظهر تلقائيًا لو فيها بيانات أو مطلوبة لحساب في الصفحة
+export const OPT_COLS = [['party', 'الطرف'], ['inv', 'رقم الفاتورة'], ['invdate', 'تاريخ الفاتورة'], ['tax', 'الضريبة'],
+  ['project', 'المشروع'], ['cc', 'مركز التكلفة'], ['eq', 'المعدة'], ['note', 'بيان السطر']];
+const COLS = [['no', 'القيد'], ['desc', 'البيان'], ['acc', 'الحساب'], ['dr', 'مدين'], ['cr', 'دائن'], ...OPT_COLS, ['del', '']];
+const COLS_KEY = 'erp-je-hidden-cols';
+export const hiddenCols = () => { const v = store.get(COLS_KEY, []); return Array.isArray(v) ? v : []; };
+
+// نافذة اختيار الأعمدة الظاهرة
+export function chooseColumns(onDone) {
+  const hidden = new Set(hiddenCols());
+  const m = modal({ title: 'الأعمدة الظاهرة', size: 'narrow' });
+  m.body.append(h('p', { class: 'notice', style: { marginBottom: '12px' } }, 'العمود المخفي يظهر تلقائيًا لو فيه بيانات، أو لو حساب في الصفحة يتطلبه.'),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } }, OPT_COLS.map(([k, t]) => {
+      const c = h('input', { type: 'checkbox', checked: !hidden.has(k) });
+      c.addEventListener('change', () => { if (c.checked) hidden.delete(k); else hidden.add(k); });
+      return h('label', { class: 'check' }, c, t);
+    })));
+  m.foot.append(h('button', { class: 'btn primary', onclick: () => { store.set(COLS_KEY, [...hidden]); m.close(); onDone?.(); } }, 'حفظ'),
+    h('button', { class: 'btn', onclick: () => { store.set(COLS_KEY, []); m.close(); onDone?.(); } }, 'إظهار الكل'));
+}
 
 // opts: { lk, company, entries, single, excludeEntry, onChange }
 export function createEditor(opts) {
@@ -36,7 +55,26 @@ export function createEditor(opts) {
   const ctrls = new Map();        // السطر ← عناصر التحكم (لتحديثها بدون إعادة رسم)
   const checkTimers = new Map();  // قيد ← مؤقت فحص الفواتير
   const rate = lk.vatRate || 0.15;
-  const changed = () => opts.onChange?.(entries);
+  let table = null;
+  const changed = () => { refreshCols(); opts.onChange?.(entries); };
+
+  // الأعمدة المخفية تظهر تلقائيًا لو فيها بيانات أو مطلوبة
+  function refreshCols() {
+    if (!table) return;
+    const hidden = hiddenCols();
+    const forced = new Set();
+    for (const e of entries) for (const l of e.lines) {
+      const a = accRow(l.account_id);
+      if (l.party_id || l.employee_id || a?.party_rule === 'required' || taxLine(l)) forced.add('party');
+      if ((l.invoice_no || '').trim() || l.invoice_date || taxLine(l)) { forced.add('inv'); forced.add('invdate'); }
+      if (isVat(l) || l.tax_category) forced.add('tax');
+      if (l.project_id || a?.project_rule === 'required') forced.add('project');
+      if (l.cost_center_id || a?.cost_center_rule === 'required') forced.add('cc');
+      if (l.equipment_id || a?.equipment_rule === 'required') forced.add('eq');
+      if ((l.description || '').trim()) forced.add('note');
+    }
+    OPT_COLS.forEach(([k]) => table.classList.toggle('hide-' + k, hidden.includes(k) && !forced.has(k)));
+  }
 
   const accRow = (id) => (id ? lk.byId('accounts', id)?.row : null);
   const isVat = (l) => (accRow(l.account_id)?.vat_role || 'none') !== 'none';
@@ -96,16 +134,16 @@ export function createEditor(opts) {
           const typeSel = h('select', { class: 'input cell-input', 'data-f': 'type', title: 'نوع القيد' },
             ['regular', 'opening', 'adjustment'].map((t) => h('option', { value: t, selected: e.entry_type === t }, ENTRY_TYPES[t])));
           typeSel.addEventListener('change', () => { e.entry_type = typeSel.value; changed(); });
-          tr.append(h('td', { rowspan: n, class: 'je-no' },
-            h('div', { class: 'je-num' }, single ? '' : ei + 1),
-            h('span', { class: 'badge ' + (diff === 0 && d > 0 ? 'ok' : d === 0 && c === 0 ? '' : 'bad'), 'data-diff': ei },
-              diff === 0 && d > 0 ? 'متوازن' : d === 0 && c === 0 ? 'فارغ' : 'فرق ' + fmt.num(Math.abs(diff))),
-            typeSel));
-          const dateIn = h('input', { class: 'input cell-input', type: 'date', value: e.entry_date || '', 'data-f': 'date' });
+          const dateIn = h('input', { class: 'input cell-input', type: 'date', value: e.entry_date || '', 'data-f': 'date', title: 'تاريخ القيد' });
           dateIn.addEventListener('change', () => { e.entry_date = dateIn.value; autofill(e); changed(); scheduleCheck(e); });
           const descIn = h('textarea', { class: 'input cell-input je-desc', rows: 1, placeholder: 'بيان القيد', 'data-f': 'desc' }, e.description || '');
           descIn.addEventListener('input', () => { e.description = descIn.value; changed(); });
-          tr.append(h('td', { rowspan: n }, dateIn), h('td', { rowspan: n, class: 'je-desc-cell' }, descIn));
+          tr.append(h('td', { rowspan: n, class: 'je-no c-no' },
+            h('div', { class: 'je-head' }, h('span', { class: 'je-num' }, single ? '' : ei + 1),
+              h('span', { class: 'badge ' + (diff === 0 && d > 0 ? 'ok' : d === 0 && c === 0 ? '' : 'bad'), 'data-diff': ei },
+                diff === 0 && d > 0 ? 'متوازن' : d === 0 && c === 0 ? 'فارغ' : 'فرق ' + fmt.num(Math.abs(diff)))),
+            dateIn, typeSel),
+          h('td', { rowspan: n, class: 'je-desc-cell c-desc' }, descIn));
         }
         tr.append(...lineCells(e, ei, l, li));
         tbody.append(tr);
@@ -113,13 +151,14 @@ export function createEditor(opts) {
     });
 
     const totals = entries.reduce((s, e) => { const x = entryDiff(e); s.d += x.d; s.c += x.c; return s; }, { d: 0, c: 0 });
-    const table = h('table', { class: 'grid je-grid' },
-      h('thead', {}, h('tr', {}, COLS.map((t) => h('th', {}, t)))),
+    table = h('table', { class: 'grid je-grid' },
+      h('thead', {}, h('tr', {}, COLS.map(([k, t]) => h('th', { class: 'c-' + k }, t)))),
       tbody,
-      h('tfoot', {}, h('tr', {}, h('td', { colspan: 4, style: { fontWeight: 700 } }, single ? 'الإجمالي' : `${entries.length} قيد`),
+      h('tfoot', {}, h('tr', {}, h('td', { colspan: 3, style: { fontWeight: 700 } }, single ? 'الإجمالي' : `${entries.length} قيد`),
         h('td', { class: 'num', style: { fontWeight: 700 } }, fmt.num(totals.d)), h('td', { class: 'num', style: { fontWeight: 700 } }, fmt.num(totals.c)),
-        h('td', { colspan: COLS.length - 6 }))));
+        h('td', { colspan: COLS.length - 5 }))));
     table.addEventListener('keydown', onKey);
+    refreshCols();
 
     noticeBox.replaceChildren(notice ? h('div', { class: 'notice warn', style: { marginBottom: '10px' } }, notice) : '');
     el.replaceChildren(noticeBox,
@@ -130,6 +169,7 @@ export function createEditor(opts) {
           single ? '' : h('button', { class: 'btn', onclick: addEntry }, '+ قيد جديد'),
           h('span', { class: 'help' }, single ? 'Enter: الخانة التالية • في آخر السطر: سطر جديد' : 'Enter: الخانة التالية • في آخر السطر: سطر جديد • Ctrl+Enter: قيد جديد'),
           h('div', { class: 'grow' }),
+          h('button', { class: 'btn', title: 'اختيار الأعمدة الظاهرة', onclick: () => chooseColumns(refreshCols) }, icon('columns'), 'الأعمدة'),
           ...(opts.footExtras ? opts.footExtras() : []))));
     entries.forEach((e) => { if (e.lines.some((l) => l.party_id && l.invoice_no)) scheduleCheck(e); });
     if (focus) focusCell(focus);
@@ -265,9 +305,9 @@ export function createEditor(opts) {
       redraw();
     } }, '×');
 
-    return [h('td', { class: 'acc-cell' }, accP.el), h('td', {}, dr), h('td', {}, cr), h('td', {}, partyP.el),
-      h('td', { class: 'inv-cell' }, invNo, invSt), h('td', {}, invDate), h('td', {}, base, cat),
-      h('td', {}, projP.el), h('td', {}, ccP.el), h('td', {}, eqP.el), h('td', {}, note), h('td', {}, delBtn)];
+    return [h('td', { class: 'acc-cell c-acc' }, accP.el), h('td', { class: 'c-dr' }, dr), h('td', { class: 'c-cr' }, cr), h('td', { class: 'c-party' }, partyP.el),
+      h('td', { class: 'inv-cell c-inv' }, invNo, invSt), h('td', { class: 'c-invdate' }, invDate), h('td', { class: 'c-tax' }, base, cat),
+      h('td', { class: 'c-project' }, projP.el), h('td', { class: 'c-cc' }, ccP.el), h('td', { class: 'c-eq' }, eqP.el), h('td', { class: 'c-note' }, note), h('td', { class: 'c-del' }, delBtn)];
   }
 
   function onKey(ev) {

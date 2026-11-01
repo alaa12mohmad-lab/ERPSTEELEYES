@@ -291,7 +291,7 @@ async function renderAudit(el) {
     const { data, error } = await q;
     if (error) { tbody.replaceChildren(h('tr', {}, h('td', { colspan: 5, class: 'empty' }, errMsg(error)))); return; }
     tbody.replaceChildren(...data.map((a) => h('tr', { onclick: () => {
-      const m = modal({ title: `${TABLE_NAMES[a.table_name] || a.table_name} — ${a.action === 'insert' ? 'إضافة' : 'تعديل'}`, size: 'wide' });
+      const m = modal({ title: `${TABLE_NAMES[a.table_name] || a.table_name} — ${{ insert: 'إضافة', update: 'تعديل', delete: 'حذف' }[a.action]}`, size: 'wide' });
       m.body.append(h('dl', { class: 'kv' }, h('dt', {}, 'الوقت'), h('dd', {}, fmt.datetime(a.at)), h('dt', {}, 'المستخدم'), h('dd', {}, name(a.user_id)),
         h('dt', {}, 'السجل'), h('dd', { class: 'ltr' }, a.record_id || ''),
         a.old_data && [h('dt', {}, 'قبل'), h('dd', {}, h('pre', { class: 'json' }, JSON.stringify(a.old_data, null, 2)))],
@@ -299,7 +299,7 @@ async function renderAudit(el) {
       m.foot.append(h('button', { class: 'btn', onclick: m.close }, 'إغلاق'));
     } },
       h('td', {}, fmt.datetime(a.at)), h('td', {}, name(a.user_id)), h('td', {}, TABLE_NAMES[a.table_name] || a.table_name),
-      h('td', {}, a.action === 'insert' ? h('span', { class: 'badge ok' }, 'إضافة') : h('span', { class: 'badge' }, 'تعديل')),
+      h('td', {}, a.action === 'insert' ? h('span', { class: 'badge ok' }, 'إضافة') : a.action === 'delete' ? h('span', { class: 'badge bad' }, 'حذف') : h('span', { class: 'badge' }, 'تعديل')),
       h('td', { style: { whiteSpace: 'normal', maxWidth: '420px', color: 'var(--ink-2)', fontSize: '13px' } },
         a.action === 'update' ? Object.keys(a.new_data || {}).join('، ') : (a.new_data?.name || a.new_data?.code || a.new_data?.full_name || '')))));
   };

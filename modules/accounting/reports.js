@@ -68,9 +68,10 @@ export function renderTrialBalance(el) {
 
 // فتح كشف حساب من تقرير آخر (ميزان المراجعة)
 let pendingStatement = null;
-function openStatement(company, account, from, to) {
+export function openStatement(company, account, from = yearStart(), to = today()) {
   pendingStatement = { company, account, from, to };
-  location.hash = '#/accounting/statement';
+  if (location.hash === '#/accounting/statement') window.dispatchEvent(new HashChangeEvent('hashchange'));
+  else location.hash = '#/accounting/statement';
 }
 
 // ---------------------------------------------------------------------

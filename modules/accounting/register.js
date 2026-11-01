@@ -61,6 +61,18 @@ export async function openEntry(id, { onChange } = {}) {
         h('td', { class: 'num', style: { fontWeight: 700 } }, fmt.num(totD)), h('td', { colspan: 6 }))))));
 
   m.foot.append(h('button', { class: 'btn', onclick: () => printEntries([{ entry: e, lines: lines || [] }], users || []) }, 'طباعة'));
+  if (state.can('accounting', 4) && !e.reversed_by_no) {
+    m.foot.append(h('button', { class: 'btn danger', title: 'حذف نهائي — يبقى في سجل القيود المحذوفة', onclick: async () => {
+      const note = 'الحذف نهائي: القيد يختفي من الصفحات والتقارير، ونسخة كاملة منه تُحفظ في "القيود المحذوفة". لو كان آخر قيد في السنة يرجع رقمه للقيد التالي، وإلا يفضل رقمه فاضي.'
+        + (e.in_manara ? ' القيد مُدخل في المنارة: احذفه من هناك أيضًا.' : '');
+      const r = await askReason(`حذف القيد ${e.fiscal_year}-${e.entry_no}`, { ok: 'حذف نهائي', note });
+      if (!r) return;
+      try {
+        const res = await rpc('delete_entry', { p_entry: e.id, p_reason: r }, 'accounting');
+        toast(`حُذف القيد ${res.fiscal_year}-${res.entry_no}` + (res.number_reused ? ' — رقمه رجع للقيد التالي' : ''), 'ok'); done();
+      } catch (err) { toast(err.message, 'bad'); }
+    } }, 'حذف القيد'));
+  }
   if (e.version > 1) m.foot.append(h('button', { class: 'btn', onclick: () => historyDialog(e) }, 'سجل التعديلات'));
   if (state.can('accounting', 3) && !cancelled) {
     const editable = e.entry_type !== 'reversal' && !e.reversed_by_no;
@@ -218,6 +230,48 @@ export function renderRegister(el) {
     window.XLSX.writeFile(wb, 'سجل القيود.xlsx');
   }
   load();
+}
+
+// سجل القيود المحذوفة: من حذف، متى، السبب، والقيد كما كان
+export function renderDeleted(el) {
+  const tbody = h('tbody'); const count = h('div', { class: 'count' });
+  el.replaceChildren(h('p', { class: 'notice', style: { marginBottom: '12px' } }, 'القيود المحذوفة نهائيًا. كل قيد محفوظ هنا بأسطره وتاريخ تعديلاته كما كان لحظة الحذف.'),
+    h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
+      h('thead', {}, h('tr', {}, ['الرقم', 'تاريخ القيد', 'الشركة', 'البيان', 'الإجمالي', 'السبب', 'حذفه', 'وقت الحذف', 'الرقم'].map((t) => h('th', {}, t)))), tbody)), count));
+  const off = state.onCompaniesChange(() => { if (document.body.contains(el)) load(); else off(); });
+  async function load() {
+    const [{ data, error }, { data: users }] = await Promise.all([
+      acc.from('deleted_entries').select('*').in('company_id', state.selectedCompanies).order('created_at', { ascending: false }).limit(1000),
+      core.from('v_user_names').select('id, full_name')]);
+    if (error) { tbody.replaceChildren(h('tr', {}, h('td', { colspan: 9, class: 'empty' }, errMsg(error)))); return; }
+    const name = (id) => (users || []).find((u) => u.id === id)?.full_name || '—';
+    tbody.replaceChildren(...(data.length ? data.map((d) => h('tr', { onclick: () => showDeleted(d, name) },
+      h('td', { class: 'ltr' }, `${d.fiscal_year}-${d.entry_no}`), h('td', {}, fmt.date(d.entry_date)), h('td', {}, state.companyName(d.company_id)),
+      h('td', { style: { whiteSpace: 'normal', maxWidth: '320px' } }, d.description), h('td', { class: 'num' }, fmt.num(d.total)),
+      h('td', { style: { whiteSpace: 'normal', maxWidth: '260px' } }, d.reason), h('td', {}, name(d.created_by)), h('td', {}, fmt.datetime(d.created_at)),
+      h('td', {}, d.number_reused ? h('span', { class: 'badge accent', title: 'كان آخر قيد فرقمه رجع للقيد التالي' }, 'أُعيد استخدامه') : h('span', { class: 'badge' }, 'فاضي'))))
+      : [h('tr', {}, h('td', { colspan: 9, class: 'empty' }, 'لا توجد قيود محذوفة'))]));
+    count.textContent = `${data.length} قيد محذوف`;
+  }
+  load();
+}
+
+function showDeleted(d, name) {
+  const s = d.snapshot || {};
+  const m = modal({ title: `القيد المحذوف ${d.fiscal_year}-${d.entry_no} — ${state.companyName(d.company_id)}`, size: 'wide' });
+  m.body.append(
+    h('div', { class: 'notice bad', style: { marginBottom: '12px' } }, `حُذف بواسطة ${name(d.created_by)} — ${fmt.datetime(d.created_at)}. السبب: ${d.reason}`),
+    h('dl', { class: 'kv', style: { marginBottom: '12px' } },
+      h('dt', {}, 'التاريخ'), h('dd', {}, fmt.date(s.entry_date)), h('dt', {}, 'البيان'), h('dd', {}, s.description),
+      h('dt', {}, 'النوع'), h('dd', {}, ENTRY_TYPES[s.entry_type] || ''), h('dt', {}, 'الحالة وقت الحذف'), h('dd', {}, s.status === 'cancelled' ? 'ملغي — ' + (s.cancel_reason || '') : 'ساري'),
+      h('dt', {}, 'أدخله'), h('dd', {}, `${name(s.created_by)} — ${fmt.datetime(s.created_at)}`),
+      h('dt', {}, 'المنارة'), h('dd', {}, s.in_manara ? 'كان مُدخلًا' + (s.manara_no ? ' — ' + s.manara_no : '') : 'لا'),
+      (s.versions || []).length ? [h('dt', {}, 'تعديلات سابقة'), h('dd', {}, `${s.versions.length} (آخر نسخة ${s.version})`)] : null),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
+      h('thead', {}, h('tr', {}, ['الحساب', 'مدين', 'دائن', 'الطرف', 'الفاتورة', 'المشروع', 'المركز', 'المعدة', 'البيان'].map((t) => h('th', {}, t)))),
+      h('tbody', {}, (s.lines || []).map((l) => h('tr', { style: { cursor: 'default' } }, h('td', {}, l.account), h('td', { class: 'num' }, Number(l.debit) ? fmt.num(l.debit) : ''),
+        h('td', { class: 'num' }, Number(l.credit) ? fmt.num(l.credit) : ''), h('td', {}, l.party || ''), h('td', {}, invText(l)), h('td', {}, l.project || ''),
+        h('td', {}, l.cost_center || ''), h('td', {}, l.equipment || ''), h('td', {}, l.description || '')))))));
 }
 
 export function renderProposed(el) {

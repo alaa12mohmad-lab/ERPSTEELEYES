@@ -99,6 +99,11 @@ export function renderAccounts(el) {
         }
         return out;
       },
+      formExtras: (r, box) => {
+        const why = r.has_lines ? 'الحساب لا يُحذف لأنه مستخدم في قيود (ولو قيد ملغي). يمكن توقيفه لو رصيده صفر.'
+          : r.has_children ? 'الحساب لا يُحذف لأن له حسابات فرعية (ولو موقوفة). احذف الفروع الأول.' : '';
+        if (why) box.append(h('div', { class: 'notice', style: { marginTop: '10px' } }, why));
+      },
       toolbarExtras: () => [h('button', { class: 'btn', onclick: copyChart }, 'نسخ الشجرة من شركة أخرى')],
     });
   }
