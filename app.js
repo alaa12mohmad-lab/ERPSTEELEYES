@@ -98,13 +98,17 @@ function renderShell() {
         h('span', { class: 't' }, CONFIG.APP_NAME, h('small', {}, 'عيون الحديد • ريان • القيادة الذكية'))),
       sideNav,
       h('div', { class: 'side-foot' },
-        h('button', { class: 'side-link', title: 'طي القائمة', onclick: () => {
-          shell.classList.toggle('collapsed'); store.set('erp-side-collapsed', shell.classList.contains('collapsed'));
-        } }, icon('collapse'), h('span', { class: 'txt' }, 'طي القائمة')))),
+        h('button', { class: 'side-link', title: 'إخفاء القائمة (تظهر من زر القائمة فوق)', onclick: () => {
+          shell.classList.add('collapsed'); store.set('erp-side-collapsed', true);
+        } }, icon('collapse'), h('span', { class: 'txt' }, 'إخفاء القائمة')))),
     h('div', { class: 'side-scrim', onclick: () => shell.classList.remove('side-open') }),
     h('div', { class: 'main' },
       h('header', { class: 'topbar' },
-        h('button', { class: 'icon-btn menu-btn', title: 'القائمة', onclick: () => shell.classList.toggle('side-open') }, icon('menu')),
+        h('button', { class: 'icon-btn menu-btn', title: 'القائمة', onclick: () => {
+          if (window.innerWidth <= 900) shell.classList.toggle('side-open');
+          else { shell.classList.toggle('collapsed'); store.set('erp-side-collapsed', shell.classList.contains('collapsed')); }
+        } }, icon('menu')),
+        h('a', { class: 'top-brand', href: '#/' }, h('span', { class: 'logo' }, 'م'), h('span', { class: 'txt' }, CONFIG.APP_NAME)),
         h('button', { class: 'search-btn', onclick: openPalette }, icon('search'), h('span', { class: 'txt' }, 'بحث أو انتقال سريع…'), h('kbd', {}, 'Ctrl K')),
         topTitle = h('span', { class: 'spacer' }),
         picker, themeBtn, userBtn),
@@ -148,37 +152,36 @@ async function openMfa() {
 // القائمة الجانبية
 // ---------------------------------------------------------------------
 function drawSide(modCode, tabPath) {
-  const open = store.get('erp-side-open', {});
-  const items = [
-    h('a', { class: 'side-link' + (!modCode ? ' on' : ''), href: '#/' }, icon(state.can('dashboard', 1) ? 'chart' : 'home'),
-      h('span', { class: 'txt' }, state.can('dashboard', 1) ? 'لوحة التحكم' : 'الرئيسية')),
-  ];
-  for (const m of available()) {
-    const meta = moduleMeta(m.code);
-    const isOpen = m.code === modCode || open[m.code];
-    const groups = [];
-    for (const t of tabsOf(m)) {
-      const g = t.group || '';
-      let grp = groups.find((x) => x.name === g);
-      if (!grp) groups.push(grp = { name: g, tabs: [] });
-      grp.tabs.push(t);
-    }
-    const head = h('button', { class: 'side-link' + (m.code === modCode ? ' on' : ''), title: m.title, onclick: () => {
-      if (shell.classList.contains('collapsed')) { location.hash = `#/${m.code}`; return; }
-      wrap.classList.toggle('open'); open[m.code] = wrap.classList.contains('open'); store.set('erp-side-open', open);
-    } }, icon(meta.icon || 'database'), h('span', { class: 'txt' }, m.title), h('span', { class: 'chev' }, '◀'));
-    const sub = h('div', { class: 'side-sub' }, groups.flatMap((g) => [
-      g.name ? h('div', { class: 'lbl' }, g.name) : null,
-      ...g.tabs.map((t) => h('a', { href: `#/${m.code}/${t.path}`, class: m.code === modCode && t.path === tabPath ? 'on' : '' }, t.title)),
-    ]).filter(Boolean));
-    const wrap = h('div', { class: 'side-group' + (isOpen ? ' open' : '') }, head, sub);
-    items.push(wrap);
+  // الرئيسية بدون قائمة جانبية؛ داخل القسم: صفحات القسم فقط + مبدّل الأقسام
+  shell.classList.toggle('no-side', !modCode);
+  if (!modCode) { sideNav.replaceChildren(); return; }
+  const mod = MODULES.find((m) => m.code === modCode);
+  const meta = moduleMeta(mod.code);
+  const groups = [];
+  for (const t of tabsOf(mod)) {
+    const g = t.group || '';
+    let grp = groups.find((x) => x.name === g);
+    if (!grp) groups.push(grp = { name: g, tabs: [] });
+    grp.tabs.push(t);
   }
-  // الأقسام اللي لسه ما اتبنتش
-  const built = new Set(MODULES.map((m) => m.code));
-  const soon = (state.profile.modules || []).filter((m) => !built.has(m.code) && !['dashboard', 'assistant'].includes(m.code) && (m.level > 0 || state.profile.is_admin));
-  for (const m of soon) items.push(h('div', { class: 'side-link side-soon', title: 'قريبًا' }, icon(m.icon), h('span', { class: 'txt' }, m.name), h('span', { class: 'chev' }, 'قريبًا')));
-  sideNav.replaceChildren(...items);
+  let menu = null;
+  const switcher = h('button', { class: 'mod-switch', title: 'التنقل لقسم آخر', onclick: (e) => {
+    e.stopPropagation();
+    if (menu) { menu.remove(); menu = null; return; }
+    const built = new Set(MODULES.map((m) => m.code));
+    menu = h('div', { class: 'mod-menu', onclick: (ev) => ev.stopPropagation() },
+      h('a', { href: '#/' }, icon('home'), 'الرئيسية'),
+      ...available().map((m) => h('a', { href: `#/${m.code}`, class: m.code === modCode ? 'on' : '' }, icon(moduleMeta(m.code).icon || 'database'), m.title)),
+      ...(state.profile.modules || []).filter((m) => !built.has(m.code) && !['dashboard', 'assistant'].includes(m.code) && (m.level > 0 || state.profile.is_admin))
+        .map((m) => h('span', { class: 'soon' }, icon(m.icon), m.name, h('small', {}, 'قريبًا'))));
+    switcher.after(menu);
+    const close = () => { menu?.remove(); menu = null; document.removeEventListener('click', close); };
+    setTimeout(() => document.addEventListener('click', close), 0);
+  } }, h('span', { class: 'mod-ico' }, icon(meta.icon || 'database')), h('span', { class: 'txt' }, mod.title), h('span', { class: 'chev' }, '▾'));
+  sideNav.replaceChildren(switcher, ...groups.flatMap((g) => [
+    g.name ? h('div', { class: 'side-lbl' }, g.name) : null,
+    ...g.tabs.map((t) => h('a', { class: 'side-item' + (t.path === tabPath ? ' on' : ''), href: `#/${mod.code}/${t.path}` }, t.title)),
+  ]).filter(Boolean));
 }
 
 // ---------------------------------------------------------------------
@@ -227,7 +230,7 @@ function renderHome() {
   main.replaceChildren(...[
     h('div', { class: 'page-head' }, h('div', {},
       h('h1', { class: 'hello' }, (hour < 12 ? 'صباح الخير' : 'مساء الخير') + '، ' + p.full_name.split(' ')[0]),
-      h('p', { class: 'sub' }, state.can('dashboard', 1) ? 'نظرة سريعة على الشركات المختارة من الشريط العلوي' : 'اختر القسم'))),
+      h('p', { class: 'sub' }, widgets.length ? 'نظرة سريعة على الشركات المختارة من الشريط العلوي' : 'اختر القسم'))),
     widgets.length ? wbox : null,
     widgets.length ? h('p', { class: 'help', style: { color: 'var(--ink-3)', fontSize: '12px', marginTop: '8px' } }, 'محتوى لوحة التحكم الكامل هيتحدد لاحقًا — كل قسم بيضيف بطاقاته هنا.') : null,
     mods.length === 0 ? h('div', { class: 'notice warn' }, 'لا توجد أقسام متاحة لحسابك حتى الآن. تواصل مع المحاسب لتحديد صلاحياتك.') : null,
@@ -249,7 +252,7 @@ document.addEventListener('keydown', (e) => {
 
 function openPalette() {
   if (document.querySelector('.palette')) return;
-  const pages = [{ label: state.can('dashboard', 1) ? 'لوحة التحكم' : 'الرئيسية', hint: '', icon: 'home', run: () => { location.hash = '#/'; } }];
+  const pages = [{ label: 'الرئيسية', hint: '', icon: 'home', run: () => { location.hash = '#/'; } }];
   for (const m of available()) for (const t of tabsOf(m)) {
     pages.push({ label: t.title, hint: m.title + (t.group ? ' • ' + t.group : ''), icon: moduleMeta(m.code).icon || 'page', run: () => { location.hash = `#/${m.code}/${t.path}`; } });
   }

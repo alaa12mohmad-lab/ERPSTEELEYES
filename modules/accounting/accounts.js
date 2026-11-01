@@ -46,7 +46,7 @@ export function renderAccounts(el) {
       ],
       filter: (q) => q.eq('company_id', company),
       order: [{ col: 'sort_path' }],
-      searchKeys: ['code', 'name', 'manara_code'],
+      searchKeys: ['code', 'name'],
       defaults: () => ({ company_id: company, is_postable: true, party_rule: 'forbidden', project_rule: 'optional', cost_center_rule: 'optional', equipment_rule: 'optional', vat_role: 'none' }),
       columns: [
         { key: 'code', label: 'الكود', render: (r) => h('span', { class: 'ltr', style: { fontWeight: r.is_postable ? 400 : 700 } }, r.code) },
@@ -57,7 +57,6 @@ export function renderAccounts(el) {
         { key: 'rules', label: 'طرف / مشروع / مركز / معدة', render: (r) => (r.is_postable
           ? `${r.party_rule === 'forbidden' ? '—' : ruleShort[r.party_rule] + ' (' + lbl(PK, r.party_kind) + ')'} / ${ruleShort[r.project_rule]} / ${ruleShort[r.cost_center_rule]} / ${ruleShort[r.equipment_rule]}` : '') },
         { key: 'flags', label: 'خصائص', render: (r) => [r.is_cash_account && 'نقدية', r.is_control_account && 'رقابة', r.vat_role !== 'none' && lbl(VAT, r.vat_role)].filter(Boolean).join('، ') },
-        { key: 'manara_code', label: 'كود المنارة', render: (r) => (r.is_internal_only ? 'تحليلي داخلي' : r.manara_code || '') },
       ],
       fields: [
         { key: 'company_id', label: 'الشركة', type: 'select', required: true, readonly: true, options: opts.companies(), importable: false },
@@ -81,8 +80,6 @@ export function renderAccounts(el) {
         { key: 'is_cash_account', label: 'حساب نقدية (يمنع الرصيد السالب)', type: 'bool' },
         { key: 'is_control_account', label: 'حساب رقابة (عملاء / موردين / عهد)', type: 'bool' },
         { key: 'vat_role', label: 'الضريبة', type: 'select', required: true, default: 'none', options: opts.list(VAT) },
-        { key: 'manara_code', label: 'كود المنارة المقابل', ltr: true },
-        { key: 'is_internal_only', label: 'تحليلي داخلي (ليس له مقابل في المنارة)', type: 'bool' },
         { key: 'is_noncash_adjustment', label: 'تسوية غير نقدية (مجمع إهلاك / مخصصات)', type: 'bool' },
         { key: 'cashflow_line', label: 'بند التدفق (الطريقة المباشرة)', help: 'اختياري' },
         { key: 'notes', label: 'ملاحظات', type: 'textarea' },

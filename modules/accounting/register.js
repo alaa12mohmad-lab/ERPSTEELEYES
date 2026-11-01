@@ -1,4 +1,4 @@
-// سجل القيود + نافذة القيد (عكس، علامة المنارة)
+// سجل القيود + نافذة القيد (طباعة، تعديل، إلغاء، عكس، حذف، سجل التعديلات)
 import { acc, core, rpc, errMsg } from '../../shared/sb.js';
 import { h, modal, toast, fmt, askReason } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
@@ -13,8 +13,6 @@ export function entryBadges(e) {
     e.entry_type !== 'regular' && h('span', { class: 'badge accent' }, ENTRY_TYPES[e.entry_type]),
     e.reversed_by_no && h('span', { class: 'badge bad' }, 'معكوس'),
     e.version > 1 && e.status !== 'cancelled' && h('span', { class: 'badge warn', title: `النسخة ${e.version}` }, 'معدّل'),
-    e.in_manara && h('span', { class: 'badge ok' }, 'بالمنارة'),
-    e.manara_review && h('span', { class: 'badge warn', title: 'عُدّل أو أُلغي بعد إدخاله في المنارة' }, 'راجع المنارة'),
   ].filter(Boolean);
 }
 
@@ -38,8 +36,6 @@ export async function openEntry(id, { onChange } = {}) {
   const totD = (lines || []).reduce((s, l) => s + Number(l.debit), 0);
   m.body.replaceChildren(
     cancelled ? h('div', { class: 'notice bad', style: { marginBottom: '12px' } }, 'قيد ملغي — لا يدخل في أي رصيد أو تقرير. السبب: ' + (e.cancel_reason || '')) : '',
-    e.manara_review ? h('div', { class: 'notice warn', style: { marginBottom: '12px' } },
-      cancelled ? 'القيد كان مُدخلًا في المنارة ثم أُلغي هنا — ألغِه في المنارة أيضًا.' : 'القيد عُدّل بعد إدخاله في المنارة — راجع القيد في المنارة ثم علّمه من جديد.') : '',
     h('dl', { class: 'kv', style: { marginBottom: '14px' } },
       h('dt', {}, 'التاريخ'), h('dd', {}, fmt.date(e.entry_date)),
       h('dt', {}, 'البيان'), h('dd', {}, e.description),
@@ -48,7 +44,7 @@ export async function openEntry(id, { onChange } = {}) {
       e.reversed_by_no ? [h('dt', {}, 'معكوس'), h('dd', {}, h('span', { class: 'badge bad' }, `عُكس بالقيد ${e.reversed_by_no}`))] : '',
       h('dt', {}, 'أدخله'), h('dd', {}, `${name(e.created_by)} — ${fmt.datetime(e.created_at)}`),
       e.version > 1 ? [h('dt', {}, cancelled ? 'ألغاه' : 'آخر تعديل'), h('dd', {}, `${name(e.updated_by)} — ${fmt.datetime(e.updated_at)} (النسخة ${e.version})`)] : '',
-      h('dt', {}, 'المنارة'), h('dd', {}, e.in_manara ? h('span', { class: 'badge ok' }, 'تم الإدخال' + (e.manara_no ? ' — ' + e.manara_no : '')) : 'لم يُدخل بعد')),
+    ),
     h('div', { class: 'table-wrap' }, h('table', { class: 'grid' + (cancelled ? ' dim' : '') },
       h('thead', {}, h('tr', {}, lineCols.map((t) => h('th', {}, t)))),
       h('tbody', {}, (lines || []).map((l) => h('tr', { style: { cursor: 'default' } },
@@ -63,8 +59,7 @@ export async function openEntry(id, { onChange } = {}) {
   m.foot.append(h('button', { class: 'btn', onclick: () => printEntries([{ entry: e, lines: lines || [] }], users || []) }, 'طباعة'));
   if (state.can('accounting', 4) && !e.reversed_by_no) {
     m.foot.append(h('button', { class: 'btn danger', title: 'حذف نهائي — يبقى في سجل القيود المحذوفة', onclick: async () => {
-      const note = 'الحذف نهائي: القيد يختفي من الصفحات والتقارير، ونسخة كاملة منه تُحفظ في "القيود المحذوفة". لو كان آخر قيد في السنة يرجع رقمه للقيد التالي، وإلا يفضل رقمه فاضي.'
-        + (e.in_manara ? ' القيد مُدخل في المنارة: احذفه من هناك أيضًا.' : '');
+      const note = 'الحذف نهائي: القيد يختفي من الصفحات والتقارير، ونسخة كاملة منه تُحفظ في "القيود المحذوفة". لو كان آخر قيد في السنة يرجع رقمه للقيد التالي، وإلا يفضل رقمه فاضي.';
       const r = await askReason(`حذف القيد ${e.fiscal_year}-${e.entry_no}`, { ok: 'حذف نهائي', note });
       if (!r) return;
       try {
@@ -83,21 +78,11 @@ export async function openEntry(id, { onChange } = {}) {
     if (!e.reversed_by_no) {
       m.foot.append(h('button', { class: 'btn danger', onclick: async () => {
         const msg = e.entry_type === 'reversal' ? 'إلغاء القيد العكسي يرجّع القيد الأصلي غير معكوس.' : 'القيد يبقى برقمه بحالة "ملغي" ولا يدخل في أي رصيد أو تقرير.';
-        const r = await askReason('سبب إلغاء القيد', { ok: 'إلغاء القيد', note: msg + (e.in_manara ? ' القيد مُدخل في المنارة: ألغِه هناك أيضًا.' : '') });
+        const r = await askReason('سبب إلغاء القيد', { ok: 'إلغاء القيد', note: msg });
         if (!r) return;
         try { await rpc('cancel_entry', { p_entry: e.id, p_reason: r }, 'accounting'); toast(`أُلغي القيد ${e.fiscal_year}-${e.entry_no}`, 'ok'); done(); } catch (err) { toast(err.message, 'bad'); }
       } }, 'إلغاء القيد'));
     }
-    const manaraNo = h('input', { class: 'input', style: { width: '140px' }, placeholder: 'رقم قيد المنارة', value: e.manara_no || '' });
-    const chk = h('input', { type: 'checkbox', checked: e.in_manara, style: { width: '18px', height: '18px' } });
-    m.foot.append(h('span', { class: 'spacer' }), h('label', { class: 'check' }, chk, 'تم إدخاله في المنارة'), manaraNo,
-      h('button', { class: 'btn', onclick: async () => {
-        try { await rpc('set_manara', { p_entry: e.id, p_in: chk.checked, p_no: manaraNo.value }, 'accounting'); toast('تم الحفظ', 'ok'); done(); } catch (err) { toast(err.message, 'bad'); }
-      } }, 'حفظ'));
-  } else if (state.can('accounting', 3) && cancelled && e.manara_review) {
-    m.foot.append(h('span', { class: 'spacer' }), h('button', { class: 'btn', onclick: async () => {
-      try { await rpc('set_manara', { p_entry: e.id, p_in: false, p_no: null }, 'accounting'); toast('تم', 'ok'); done(); } catch (err) { toast(err.message, 'bad'); }
-    } }, 'تم إلغاؤه في المنارة'));
   }
 }
 
@@ -110,7 +95,7 @@ async function editDialog(e, lines, done) {
   const reason = h('textarea', { class: 'input', id: 'edit-reason', rows: 2, placeholder: 'مثال: تصحيح المبلغ حسب الفاتورة الأصلية' });
   m.body.append(
     h('p', { class: 'notice', style: { marginBottom: '10px' } }, 'القيد يحتفظ برقمه. تُطبَّق كل قواعد الحفظ من جديد، وتُحفظ نسخة القيد قبل التعديل وبعده في سجل التعديلات.',
-      e.in_manara ? h('strong', {}, ' القيد مُعلَّم "بالمنارة": العلامة ستُرفع لحد ما تراجعه هناك.') : ''),
+    ),
     editor.el,
     h('div', { class: 'field', style: { marginTop: '12px' } }, h('label', { for: 'edit-reason' }, 'سبب التعديل', h('span', { class: 'req' }, '*')), reason));
   const save = h('button', { class: 'btn primary', onclick: async () => {
@@ -122,7 +107,7 @@ async function editDialog(e, lines, done) {
     save.disabled = true;
     try {
       const r = await rpc('edit_entry', { p_entry: e.id, p_data: c.payload[0], p_reason: reason.value.trim() }, 'accounting');
-      toast(`عُدّل القيد ${e.fiscal_year}-${e.entry_no} (النسخة ${r.version})` + (r.manara_review ? ' — راجعه في المنارة' : ''), 'ok');
+      toast(`عُدّل القيد ${e.fiscal_year}-${e.entry_no} (النسخة ${r.version})`, 'ok');
       m.close(); done();
     } catch (err) { editor.showServerError(err.message, c.clean); toast(err.message, 'bad'); } finally { save.disabled = false; }
   } }, 'حفظ التعديل');
@@ -163,7 +148,7 @@ async function historyDialog(e) {
       h('strong', {}, v.action === 'cancel' ? 'إلغاء' : `تعديل — النسخة ${v.version_no}`),
       h('span', {}, name(v.created_by)), h('span', { class: 'help' }, fmt.datetime(v.created_at)),
       h('span', {}, 'السبب: ', h('strong', {}, v.reason)),
-      v.before_data?.in_manara ? h('span', { class: 'badge warn' }, 'كان مُدخلًا في المنارة') : ''),
+    ),
     h('div', { class: 'ver-body' },
       h('div', {}, h('div', { class: 'ver-label' }, 'قبل'), head(v.before_data, v.after_data), h('div', { class: 'table-wrap' }, linesTable(v.before_data, v.after_data, 'before'))),
       v.after_data ? h('div', {}, h('div', { class: 'ver-label after' }, 'بعد'), head(v.after_data, v.before_data), h('div', { class: 'table-wrap' }, linesTable(v.after_data, v.before_data, 'after'))) : ''))),
@@ -175,20 +160,18 @@ export function renderRegister(el) {
   const to = h('input', { class: 'input', type: 'date', value: today(), style: { width: 'auto' } });
   const type = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: '' }, 'كل الأنواع'),
     Object.entries(ENTRY_TYPES).map(([k, v]) => h('option', { value: k }, v)));
-  const manara = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: '' }, 'المنارة: الكل'),
-    h('option', { value: 'no' }, 'لم يُدخل في المنارة'), h('option', { value: 'yes' }, 'تم إدخاله'), h('option', { value: 'review' }, 'يحتاج مراجعة في المنارة'));
   const status = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: 'active' }, 'القيود السارية'),
     h('option', { value: 'edited' }, 'المعدّلة'), h('option', { value: 'cancelled' }, 'الملغاة'), h('option', { value: '' }, 'الكل'));
   const search = h('input', { class: 'input grow', placeholder: 'بحث في البيان أو رقم القيد…' });
   const tbody = h('tbody'); const count = h('div', { class: 'count' });
   let rows = [];
   el.replaceChildren(h('div', { class: 'card' },
-    h('div', { class: 'toolbar' }, h('span', {}, 'من'), from, h('span', {}, 'إلى'), to, type, status, manara, search,
+    h('div', { class: 'toolbar' }, h('span', {}, 'من'), from, h('span', {}, 'إلى'), to, type, status, search,
       h('button', { class: 'btn', onclick: exportX }, 'تصدير')),
     h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
-      h('thead', {}, h('tr', {}, ['الرقم', 'التاريخ', 'الشركة', 'البيان', 'النوع', 'المصدر', 'الإجمالي', 'الصفحة', 'المنارة', ''].map((t) => h('th', {}, t)))), tbody)),
+      h('thead', {}, h('tr', {}, ['الرقم', 'التاريخ', 'الشركة', 'البيان', 'النوع', 'المصدر', 'الإجمالي', 'الصفحة', ''].map((t) => h('th', {}, t)))), tbody)),
     count));
-  [from, to, type, manara, status].forEach((x) => x.addEventListener('change', load));
+  [from, to, type, status].forEach((x) => x.addEventListener('change', load));
   search.addEventListener('input', draw);
   const off = state.onCompaniesChange(() => { if (document.body.contains(el)) load(); else off(); });
 
@@ -197,8 +180,6 @@ export function renderRegister(el) {
     let q = acc.from('v_entries').select('*').gte('entry_date', from.value).lte('entry_date', to.value)
       .in('company_id', state.selectedCompanies).order('entry_date', { ascending: false }).order('entry_no', { ascending: false }).limit(2000);
     if (type.value) q = q.eq('entry_type', type.value);
-    if (manara.value === 'review') q = q.eq('manara_review', true);
-    else if (manara.value) q = q.eq('in_manara', manara.value === 'yes').eq('status', 'active');
     if (status.value === 'edited') q = q.gt('version', 1).eq('status', 'active');
     else if (status.value) q = q.eq('status', status.value);
     const { data, error } = await q;
@@ -216,15 +197,14 @@ export function renderRegister(el) {
       h('td', { style: { whiteSpace: 'normal', maxWidth: '380px' } }, r.description),
       h('td', {}, ENTRY_TYPES[r.entry_type]),
       h('td', {}, SOURCES[r.source]), h('td', { class: 'num' }, fmt.num(r.total)), h('td', {}, r.batch_no || ''),
-      h('td', {}, r.in_manara ? h('span', { class: 'badge ok' }, '✓') : r.manara_review ? h('span', { class: 'badge warn' }, 'راجع') : ''),
-      h('td', {}, ...entryBadges({ ...r, entry_type: 'regular', in_manara: false, manara_review: false }), r.reversed_by_no ? ' ' + r.reversed_by_no : '')))
+      h('td', {}, ...entryBadges({ ...r, entry_type: 'regular' }), r.reversed_by_no ? ' ' + r.reversed_by_no : '')))
       : [h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'لا توجد قيود في الفترة'))]));
     count.textContent = `${list.length} قيد — الإجمالي ${fmt.num(list.filter((r) => r.status !== 'cancelled').reduce((s, r) => s + Number(r.total || 0), 0))}`;
   }
   function exportX() {
-    const aoa = [['الرقم', 'التاريخ', 'الشركة', 'البيان', 'النوع', 'المصدر', 'الإجمالي', 'الصفحة', 'المنارة', 'رقم المنارة', 'الحالة', 'النسخة', 'سبب الإلغاء'],
+    const aoa = [['الرقم', 'التاريخ', 'الشركة', 'البيان', 'النوع', 'المصدر', 'الإجمالي', 'الصفحة', 'الحالة', 'النسخة', 'سبب الإلغاء'],
       ...visible().map((r) => [`${r.fiscal_year}-${r.entry_no}`, r.entry_date, state.companyName(r.company_id), r.description, ENTRY_TYPES[r.entry_type],
-        SOURCES[r.source], Number(r.total), r.batch_no || '', r.in_manara ? 'نعم' : r.manara_review ? 'يحتاج مراجعة' : 'لا', r.manara_no || '',
+        SOURCES[r.source], Number(r.total), r.batch_no || '',
         r.status === 'cancelled' ? 'ملغي' : 'ساري', r.version, r.cancel_reason || ''])];
     const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(aoa), 'القيود');
     window.XLSX.writeFile(wb, 'سجل القيود.xlsx');
@@ -265,7 +245,6 @@ function showDeleted(d, name) {
       h('dt', {}, 'التاريخ'), h('dd', {}, fmt.date(s.entry_date)), h('dt', {}, 'البيان'), h('dd', {}, s.description),
       h('dt', {}, 'النوع'), h('dd', {}, ENTRY_TYPES[s.entry_type] || ''), h('dt', {}, 'الحالة وقت الحذف'), h('dd', {}, s.status === 'cancelled' ? 'ملغي — ' + (s.cancel_reason || '') : 'ساري'),
       h('dt', {}, 'أدخله'), h('dd', {}, `${name(s.created_by)} — ${fmt.datetime(s.created_at)}`),
-      h('dt', {}, 'المنارة'), h('dd', {}, s.in_manara ? 'كان مُدخلًا' + (s.manara_no ? ' — ' + s.manara_no : '') : 'لا'),
       (s.versions || []).length ? [h('dt', {}, 'تعديلات سابقة'), h('dd', {}, `${s.versions.length} (آخر نسخة ${s.version})`)] : null),
     h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, ['الحساب', 'مدين', 'دائن', 'الطرف', 'الفاتورة', 'المشروع', 'المركز', 'المعدة', 'البيان'].map((t) => h('th', {}, t)))),

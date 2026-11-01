@@ -23,13 +23,18 @@ function frame(el, controls, onRun) {
   const exp = h('button', { class: 'btn', disabled: true }, 'تصدير Excel');
   const prn = h('button', { class: 'btn', onclick: () => window.print() }, 'طباعة');
   el.replaceChildren(h('div', { class: 'card', style: { marginBottom: '12px' } }, h('div', { class: 'toolbar' }, ...controls, h('div', { class: 'grow' }), run, exp, prn)), out);
+  let seq = 0;
   async function go() {
+    const my = ++seq;   // لو اتغير اختيار وانت بتحسب، النتيجة القديمة تتجاهل
     out.replaceChildren(h('div', { class: 'empty' }, 'جارٍ الحساب…'));
     try {
-      const r = await onRun(out);
+      const tmp = h('div');
+      const r = await onRun(tmp);
+      if (my !== seq) return;
+      out.replaceChildren(...tmp.childNodes);
       exp.disabled = !r?.aoa;
       exp.onclick = () => r?.aoa && exportAoa(r.name, r.aoa);
-    } catch (e) { out.replaceChildren(h('div', { class: 'notice bad' }, e.message)); }
+    } catch (e) { if (my === seq) out.replaceChildren(h('div', { class: 'notice bad' }, e.message)); }
   }
   return go;
 }
@@ -390,7 +395,7 @@ export async function renderVatReturn(el) {
         h('div', { style: { padding: '10px 14px', display: 'flex', gap: '24px', flexWrap: 'wrap' } },
           h('span', {}, 'مطابقة حساب ضريبة المخرجات: ', h('span', { class: okOut ? 'stat-ok' : 'stat-bad' }, okOut ? `مطابق ✓ (${N(movOut)})` : `فرق ${N(movOut - ts.vat)}`)),
           h('span', {}, 'مطابقة حساب ضريبة المدخلات: ', h('span', { class: okIn ? 'stat-ok' : 'stat-bad' }, okIn ? `مطابق ✓ (${N(movIn)})` : `فرق ${N(movIn - tp.vat)}`)),
-          h('span', { class: 'help' }, 'الإقرار الرسمي يُقدَّم من المنارة؛ هذا للتحضير والمراجعة.'))),
+          h('span', { class: 'help' }, 'المطابقة تقارن الكشف بحركة حسابات الضريبة في الدفاتر.'))),
       h('div', { class: 'card' }, h('div', { class: 'toolbar' }, btnS, btnP), tabsBox));
     showTab('sales');
 

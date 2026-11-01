@@ -167,7 +167,7 @@ export function renderJournal(el, { focusEntry } = {}) {
     body.replaceChildren(
       h('div', { class: 'notice', style: { marginBottom: '10px', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' } },
         h('strong', {}, `صفحة رقم ${b.batch_no} — ${b.fiscal_year}`), h('span', {}, `حُفظت ${fmt.datetime(b.created_at)}`), who && h('span', {}, 'بواسطة ' + who),
-        h('span', {}, `${(ents || []).length} قيد` + (nCancelled ? ` (${nCancelled} ملغي)` : '')), h('span', { class: 'help' }, 'اضغط على أي قيد لفتحه: طباعة، تعديل، إلغاء، عكس، المنارة.'),
+        h('span', {}, `${(ents || []).length} قيد` + (nCancelled ? ` (${nCancelled} ملغي)` : '')), h('span', { class: 'help' }, 'اضغط على أي قيد لفتحه: طباعة، تعديل، إلغاء، عكس، حذف.'),
         h('span', { class: 'grow' }), printBtn),
       h('div', { class: 'card' }, h('div', { class: 'table-wrap je-wrap' }, h('table', { class: 'grid je-grid view ' + emptyCols(lines || []) },
         h('thead', {}, h('tr', {}, [['', 'القيد'], ['', 'التاريخ'], ['', 'البيان'], ['', 'الحساب'], ['', 'مدين'], ['', 'دائن'], ['party', 'الطرف'], ['inv', 'رقم الفاتورة'],

@@ -92,7 +92,7 @@ function voucher(entry, lines, users) {
         h('tr', {}, h('th', {}, 'التاريخ'), h('td', {}, fmt.date(entry.entry_date))),
         h('tr', {}, h('th', {}, 'النوع'), h('td', {}, ENTRY_TYPES[entry.entry_type] + (entry.batch_no ? ` — صفحة ${entry.batch_no}` : ''))),
         entry.version > 1 ? h('tr', {}, h('th', {}, 'النسخة'), h('td', {}, `${entry.version} (معدّل)`)) : '',
-        entry.in_manara ? h('tr', {}, h('th', {}, 'المنارة'), h('td', {}, entry.manara_no || '✓')) : ''))),
+        ''))),
     h('div', { class: 'pv-desc' }, h('strong', {}, 'البيان: '), entry.description),
     cancelled ? h('div', { class: 'pv-desc' }, h('strong', {}, 'سبب الإلغاء: '), entry.cancel_reason || '') : '',
     h('table', { class: 'pv-lines' },

@@ -4,7 +4,6 @@ import { renderAccounts } from './accounts.js';
 import { renderJournal } from './journal.js';
 import { renderRegister, renderProposed, renderDeleted } from './register.js';
 import { renderTrialBalance, renderStatement, renderIncome, renderBalanceSheet, renderPartyBalances, renderProjects, renderEquipment, renderVatReturn, renderInvoices } from './reports.js';
-import { widgets } from './widgets.js';
 import { search } from './search.js';
 
 const IN = 'الإدخال', SETUP = 'الإعداد', REP = 'التقارير', TAX = 'الفواتير والضريبة';
@@ -28,6 +27,5 @@ export default {
     { path: 'invoices', title: 'الفواتير', group: TAX, render: renderInvoices },
     { path: 'vat', title: 'الإقرار الضريبي', group: TAX, render: renderVatReturn },
   ],
-  widgets,
   search,
 };
