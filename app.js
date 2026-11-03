@@ -15,6 +15,7 @@ import { sb } from './shared/sb.js';
 import { h, toast, modal, icon, store } from './shared/ui.js';
 import { state } from './shared/state.js';
 import { MODES, ACCENTS, getTheme, setTheme } from './shared/theme.js';
+import { SCENES, POWERS, getBackdrop, setBackdrop, mountBackdrop } from './shared/backdrop.js';
 import { renderLogin, renderMessage, renderChangePassword, renderMfa, changePasswordForm, mfaForm } from './shared/auth.js';
 import { mountAssistant } from './shared/assistant.js';
 import coreModule from './modules/core/index.js';
@@ -130,6 +131,7 @@ function toggleMenu() {
     h('div', { class: 'seg' }, MODES.map(([k, v]) => h('button', { class: t.mode === k ? 'on' : '', onclick: () => { setTheme({ mode: k }); redraw(); } }, v))),
     h('div', { class: 'swatches' }, ACCENTS.map(([k, v, c]) => h('button', { class: 'swatch' + (t.accent === k ? ' on' : ''), title: v, style: { background: c },
       onclick: () => { setTheme({ accent: k }); redraw(); } }))),
+    h('button', { onclick: () => { toggleMenu(); openBackdropSettings(); } }, 'خلفية الرئيسية: ' + (SCENES[getBackdrop().scene]?.name || 'بدون حركة')),
     h('div', { class: 'sec' }, 'الحساب'),
     h('button', { onclick: () => { toggleMenu(); openChangePassword(); } }, 'تغيير كلمة السر'),
     h('button', { onclick: () => { toggleMenu(); openMfa(); } }, 'التحقق بخطوتين'),
@@ -137,6 +139,23 @@ function toggleMenu() {
   document.body.append(menuEl);
 }
 document.addEventListener('click', () => { if (menuEl) { menuEl.remove(); menuEl = null; } });
+
+// اختيار خلفية الرئيسية: التغيير يظهر فورًا (لو الرئيسية مفتوحة ورا النافذة)
+function openBackdropSettings() {
+  const m = modal({ title: 'خلفية الصفحة الرئيسية' });
+  const draw = () => {
+    const b = getBackdrop();
+    m.body.replaceChildren(
+      h('p', { class: 'help', style: { marginTop: 0 } }, 'الحركة في الصفحة الرئيسية بس، وبتقف لوحدها لما التبويب مش ظاهر. الاختيار محفوظ على الجهاز ده.'),
+      h('div', { class: 'bd-list' }, [['none', { name: 'بدون حركة', desc: 'خلفية ثابتة' }], ...Object.entries(SCENES)].map(([k, sc]) =>
+        h('button', { class: 'bd-opt' + (b.scene === k ? ' on' : ''), onclick: () => { setBackdrop({ scene: k }); draw(); } },
+          h('b', {}, sc.name), h('small', {}, sc.desc)))),
+      h('div', { class: 'field', style: { marginTop: '14px' } }, h('label', {}, 'شدة الحركة'),
+        h('div', { class: 'seg', style: { padding: 0 } }, POWERS.map(([v, t]) => h('button', { class: 'btn' + (b.power === v ? ' on' : ''), onclick: () => { setBackdrop({ power: v }); draw(); } }, t)))));
+  };
+  draw();
+  m.foot.append(h('button', { class: 'btn primary', onclick: () => { m.close(); if (location.hash.replace(/^#\/?/, '')) location.hash = '#/'; } }, 'تم'));
+}
 
 function openChangePassword() {
   const m = modal({ title: 'تغيير كلمة السر', size: 'narrow' });
@@ -189,11 +208,13 @@ function drawSide(modCode, tabPath) {
 // ---------------------------------------------------------------------
 window.addEventListener('hashchange', () => { if (main) route(); });
 
+let stopBackdrop = null;
 function route() {
+  stopBackdrop?.(); stopBackdrop = null;
   document.querySelectorAll('.overlay, .palette').forEach((o) => o.remove());   // النوافذ المفتوحة لا تنتقل مع الصفحة
   shell?.classList.remove('side-open');
   const [modCode, tabPath] = location.hash.replace(/^#\/?/, '').split('/');
-  if (!modCode) { drawSide(null, null); main.className = 'page'; return renderHome(); }
+  if (!modCode) { drawSide(null, null); main.className = 'page home'; return renderHome(); }
   const mod = MODULES.find((m) => m.code === modCode);
   if (!mod || !state.can(mod.code, 1)) { location.hash = '#/'; return; }
   const tabs = tabsOf(mod);
@@ -214,11 +235,24 @@ function route() {
 // ---------------------------------------------------------------------
 // الرئيسية: لوحة التحكم (بطاقات من كل الأقسام) + الأقسام
 // ---------------------------------------------------------------------
+const MOD_DESC = {
+  accounting: 'القيود، شجرة الحسابات، الفواتير والإقرار الضريبي، والتقارير المالية',
+  core: 'المشاريع، العملاء والموردون، المعدات، الموظفون، ومراكز التكلفة',
+  admin: 'المستخدمون، الأدوار، الاستثناءات، وسجل المراجعة',
+  hr: 'الحضور والمسيّر، ويرحّل قيد الرواتب للمحاسبة',
+  equipment: 'التشغيل والصيانة وتكلفة كل معدة',
+  tools: 'العِدد في المخزن والمواقع',
+  purchasing: 'الطلبات والعُهد والتسويات',
+  housing: 'السكن والعقود والدفعات',
+};
+
 function renderHome() {
   const p = state.profile;
   document.title = CONFIG.APP_NAME;
   const hour = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Riyadh', hour: 'numeric', hour12: false }));
   const mods = (p.modules || []).filter((m) => !['dashboard', 'assistant'].includes(m.code) && (m.level > 0 || (p.is_admin && !m.enabled)));
+  const ready = (m) => m.enabled && MODULES.some((x) => x.code === m.code);
+  const live = mods.filter(ready), soon = mods.filter((m) => !ready(m));
   const widgets = state.can('dashboard', 1)
     ? available().flatMap((m) => (m.widgets || []).filter((w) => !w.visible || w.visible())) : [];
   const wbox = h('div', { class: 'widgets' }, widgets.map((w) => {
@@ -226,21 +260,39 @@ function renderHome() {
     Promise.resolve().then(() => w.render(body)).catch((e) => body.replaceChildren(h('div', { class: 'help', style: { color: 'var(--bad)' } }, e.message)));
     return h('section', { class: 'widget ' + (w.size || 'sm') }, h('h3', {}, w.title), body);
   }));
-  const off = state.onCompaniesChange(() => { if (document.body.contains(wbox)) renderHome(); else off(); });
+  const now = new Date();
+  let hijri = '';
+  try { hijri = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).format(now); } catch { /* المتصفح لا يدعم الهجري */ }
+  const greg = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
+  // أزرار سريعة حسب الصلاحية
+  const quick = [];
+  if (state.can('accounting', 2)) quick.push({ t: 'قيد جديد', href: '#/accounting/journal', main: true, ic: 'ledger' });
+  if (state.can('accounting', 1)) quick.push({ t: 'كشف حساب', href: '#/accounting/statement' }, { t: 'ميزان المراجعة', href: '#/accounting/trial-balance' }, { t: 'الإقرار الضريبي', href: '#/accounting/vat' });
+
   main.replaceChildren(...[
-    h('div', { class: 'page-head' }, h('div', {},
-      h('h1', { class: 'hello' }, (hour < 12 ? 'صباح الخير' : 'مساء الخير') + '، ' + p.full_name.split(' ')[0]),
-      h('p', { class: 'sub' }, widgets.length ? 'نظرة سريعة على الشركات المختارة من الشريط العلوي' : 'اختر القسم'))),
+    h('section', { class: 'home-hero' },
+      h('div', {},
+        h('h1', { class: 'hello' }, (hour < 12 ? 'صباح الخير' : 'مساء الخير') + '، ', h('b', {}, p.full_name.split(' ')[0])),
+        h('div', { class: 'home-date' }, greg + (hijri ? '   |   ' + hijri : ''))),
+      quick.length ? h('div', { class: 'home-quick' }, quick.map((q) => h('a', { class: 'qa' + (q.main ? ' main' : ''), href: q.href }, q.main ? '＋ ' : '', q.t))) : null),
     widgets.length ? wbox : null,
-    widgets.length ? h('p', { class: 'help', style: { color: 'var(--ink-3)', fontSize: '12px', marginTop: '8px' } }, 'محتوى لوحة التحكم الكامل هيتحدد لاحقًا — كل قسم بيضيف بطاقاته هنا.') : null,
     mods.length === 0 ? h('div', { class: 'notice warn' }, 'لا توجد أقسام متاحة لحسابك حتى الآن. تواصل مع المحاسب لتحديد صلاحياتك.') : null,
-    mods.length ? h('div', { class: 'section-title' }, 'الأقسام') : null,
-    h('div', { class: 'tiles' }, mods.map((m) => {
-      const ready = m.enabled && MODULES.some((x) => x.code === m.code);
-      return h('a', { class: 'tile' + (ready ? '' : ' soon'), href: ready ? `#/${m.code}` : null },
-        icon(m.icon), h('div', { class: 'name' }, m.name),
-        h('div', { class: 'meta' }, ready ? ['', 'عرض', 'عرض وإضافة', 'عرض وتعديل', 'كامل'][m.level] : 'قريبًا'));
-    }))].filter(Boolean));
+    live.length ? h('div', { class: 'section-title' }, 'الأقسام') : null,
+    h('div', { class: 'tiles' }, live.map((m) => {
+      const tile = h('a', { class: 'tile', href: `#/${m.code}` },
+        h('span', { class: 'ico' }, icon(m.icon)), h('div', { class: 'name' }, m.name),
+        MOD_DESC[m.code] ? h('div', { class: 'desc' }, MOD_DESC[m.code]) : null,
+        h('div', { class: 'meta' }, ['', 'عرض', 'عرض وإضافة', 'عرض وتعديل', 'كامل'][m.level]));
+      tile.addEventListener('pointermove', (e) => { const r = tile.getBoundingClientRect(); tile.style.setProperty('--mx', (e.clientX - r.left) + 'px'); tile.style.setProperty('--my', (e.clientY - r.top) + 'px'); });
+      return tile;
+    })),
+    soon.length ? h('div', { class: 'section-title' }, 'قريبًا') : null,
+    soon.length ? h('div', { class: 'tiles-soon' }, soon.map((m) => h('div', { class: 'soon-item' },
+      h('span', { class: 'ico' }, icon(m.icon)), h('div', {}, h('b', {}, m.name), MOD_DESC[m.code] ? h('small', {}, MOD_DESC[m.code]) : null)))) : null,
+  ].filter(Boolean));
+  stopBackdrop?.();
+  stopBackdrop = mountBackdrop(main, { companies: state.companies().map((c) => c.name.replace(/^(شركة|مؤسسة)\s+/, '')) });
+  const off = state.onCompaniesChange(() => { if (document.body.contains(wbox) && widgets.length) renderHome(); else off(); });
 }
 
 // ---------------------------------------------------------------------
