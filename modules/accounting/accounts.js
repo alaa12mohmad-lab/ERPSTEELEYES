@@ -101,11 +101,12 @@ export function renderAccounts(el) {
         { key: 'cost_center_rule', label: 'مركز التكلفة', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
         { key: 'equipment_rule', label: 'المعدة', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
         { key: 'is_cash_account', label: 'حساب نقدية (يمنع الرصيد السالب)', type: 'bool' },
+        { key: 'min_balance', label: 'حد الأمان (لحسابات النقدية)', type: 'number', help: 'صفحة السيولة تنبّهك لو الرصيد نزل تحته' },
         { key: 'is_control_account', label: 'حساب رقابة (عملاء / موردين / عهد)', type: 'bool' },
         { key: 'vat_role', label: 'الضريبة', type: 'select', required: true, default: 'none', options: opts.list(VAT),
           help: 'لحساب ضريبة المدخلات (أصل) أو المخرجات (التزام) فقط. المصروفات والإيرادات: بدون ضريبة' },
         { key: 'is_noncash_adjustment', label: 'تسوية غير نقدية (مجمع إهلاك / مخصصات)', type: 'bool' },
-        { key: 'cashflow_line', label: 'بند التدفق (الطريقة المباشرة)', help: 'اختياري' },
+        { key: 'cashflow_line', label: 'بند التدفق (الطريقة المباشرة)', help: 'اختياري — اسم البند في قائمة التدفقات النقدية (مثلًا: مدفوع لمقاولي الباطن). فاضي = حسب نوع الحساب' },
         { key: 'notes', label: 'ملاحظات', type: 'textarea' },
       ],
       beforeSave: (v, rec) => {

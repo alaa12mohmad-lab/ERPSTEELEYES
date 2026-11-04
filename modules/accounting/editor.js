@@ -7,7 +7,7 @@ import { picker, ENTRY_TYPES, TAX_CATEGORIES, today, parseAcc, rememberPartyAcco
 export const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '').trim()); return isFinite(n) ? n : 0; };
 export const round2 = (n) => Math.round(n * 100) / 100;
 export const emptyLine = () => ({ account_id: null, debit: '', credit: '', party_id: null, employee_id: null, project_id: null, cost_center_id: null,
-  equipment_id: null, description: '', invoice_no: '', invoice_date: '', tax_base: '', tax_category: '' });
+  equipment_id: null, description: '', invoice_no: '', invoice_date: '', due_date: '', tax_base: '', tax_category: '' });
 export const emptyEntry = (date) => ({ entry_date: date || today(), description: '', entry_type: 'regular', lines: [emptyLine(), emptyLine()] });
 
 export function entryDiff(e) {
@@ -20,12 +20,12 @@ export function entryDiff(e) {
 export function lineFromSaved(l) {
   return { account_id: l.account_id, debit: Number(l.debit) ? String(l.debit) : '', credit: Number(l.credit) ? String(l.credit) : '',
     party_id: l.party_id, employee_id: l.employee_id, project_id: l.project_id, cost_center_id: l.cost_center_id, equipment_id: l.equipment_id,
-    description: l.line_description || '', invoice_no: l.invoice_no || '', invoice_date: l.invoice_date || '',
+    description: l.line_description || '', invoice_no: l.invoice_no || '', invoice_date: l.invoice_date || '', due_date: l.due_date || '',
     tax_base: l.tax_base ? String(l.tax_base) : '', tax_category: l.tax_category && l.tax_category !== 'standard' ? l.tax_category : '' };
 }
 
 // أعمدة الصفحة. الاختيارية يقدر المستخدم يخفيها، وتظهر تلقائيًا لو فيها بيانات أو مطلوبة لحساب في الصفحة
-export const OPT_COLS = [['party', 'الطرف'], ['inv', 'رقم الفاتورة'], ['invdate', 'تاريخ الفاتورة'], ['tax', 'الضريبة'],
+export const OPT_COLS = [['party', 'الطرف'], ['inv', 'رقم الفاتورة'], ['invdate', 'تاريخ الفاتورة'], ['due', 'الاستحقاق'], ['tax', 'الضريبة'],
   ['project', 'المشروع'], ['cc', 'مركز التكلفة'], ['eq', 'المعدة'], ['note', 'بيان السطر']];
 const COLS = [['no', 'القيد'], ['desc', 'البيان'], ['acc', 'الحساب'], ['dr', 'مدين'], ['cr', 'دائن'], ...OPT_COLS, ['del', '']];
 const COLS_KEY = 'erp-je-hidden-cols';
@@ -101,6 +101,7 @@ export function createEditor(opts) {
       if (l.cost_center_id || a?.cost_center_rule === 'required') forced.add('cc');
       if (l.equipment_id || a?.equipment_rule === 'required') forced.add('eq');
       if ((l.description || '').trim()) forced.add('note');
+      if (l.due_date) forced.add('due');
     }
     OPT_COLS.forEach(([k]) => table.classList.toggle('hide-' + k, hidden.includes(k) && !forced.has(k)));
   }
@@ -253,6 +254,8 @@ export function createEditor(opts) {
     const invNo = h('input', { class: 'input cell-input inv', value: l.invoice_no || '', placeholder: 'رقم الفاتورة', 'data-f': 'inv', dir: 'ltr' });
     const invSt = h('span', { class: 'inv-st' });
     const invDate = h('input', { class: 'input cell-input', type: 'date', value: l.invoice_date || '', 'data-f': 'invdate' });
+    const dueDate = h('input', { class: 'input cell-input', type: 'date', value: l.due_date || '', 'data-f': 'due', title: 'ميعاد استحقاق الفاتورة لو مختلف عن مدة سداد الطرف' });
+    dueDate.addEventListener('change', () => { l.due_date = dueDate.value; changed(); });
     const base = h('input', { class: 'input cell-input num', inputmode: 'decimal', value: l.tax_base || '', placeholder: 'المبلغ الخاضع', 'data-f': 'base', title: 'المبلغ الخاضع للضريبة (قبل الضريبة)' });
     const cat = h('select', { class: 'input cell-input', 'data-f': 'cat', title: 'الفئة الضريبية للإقرار' },
       h('option', { value: '' }, '—'), Object.entries(TAX_CATEGORIES).filter(([k]) => k !== 'standard').map(([k, v]) => h('option', { value: k, selected: l.tax_category === k }, v)));
@@ -369,7 +372,7 @@ export function createEditor(opts) {
     } }, '×');
 
     return [h('td', { class: 'acc-cell c-acc' }, accP.el), h('td', { class: 'c-dr' }, dr), h('td', { class: 'c-cr' }, cr), h('td', { class: 'c-party' }, partyP.el),
-      h('td', { class: 'inv-cell c-inv' }, invNo, invSt), h('td', { class: 'c-invdate' }, invDate), h('td', { class: 'c-tax' }, base, cat),
+      h('td', { class: 'inv-cell c-inv' }, invNo, invSt), h('td', { class: 'c-invdate' }, invDate), h('td', { class: 'c-due' }, dueDate), h('td', { class: 'c-tax' }, base, cat),
       h('td', { class: 'c-project' }, projP.el), h('td', { class: 'c-cc' }, ccP.el), h('td', { class: 'c-eq' }, eqP.el), h('td', { class: 'c-note' }, note), h('td', { class: 'c-del' }, delBtn)];
   }
 
@@ -415,7 +418,7 @@ export function createEditor(opts) {
         account_id: l.account_id, debit: num(l.debit) || 0, credit: num(l.credit) || 0,
         party_id: l.party_id, employee_id: l.employee_id, project_id: l.project_id, cost_center_id: l.cost_center_id,
         equipment_id: l.equipment_id, description: (l.description || '').trim() || null,
-        invoice_no: (l.invoice_no || '').trim() || null, invoice_date: l.invoice_date || null,
+        invoice_no: (l.invoice_no || '').trim() || null, invoice_date: l.invoice_date || null, due_date: l.due_date || null,
         tax_base: isVat(l) && num(l.tax_base) ? num(l.tax_base) : null,
         tax_category: !isVat(l) && l.tax_category ? l.tax_category : null,
       })),

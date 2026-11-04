@@ -498,7 +498,7 @@ table.grid tr.removed td { background: var(--bad-soft); text-decoration: line-th
 table.grid tr.warnrow td { background: var(--warn-soft); }
 
 /* صفحة القيود: أعمدة قابلة للإخفاء، وعمود القيد يجمع الرقم والتاريخ والنوع */
-.je-grid.hide-party .c-party, .je-grid.hide-inv .c-inv, .je-grid.hide-invdate .c-invdate, .je-grid.hide-tax .c-tax,
+.je-grid.hide-party .c-party, .je-grid.hide-inv .c-inv, .je-grid.hide-invdate .c-invdate, .je-grid.hide-due .c-due, .je-grid.hide-tax .c-tax,
 .je-grid.hide-project .c-project, .je-grid.hide-cc .c-cc, .je-grid.hide-eq .c-eq, .je-grid.hide-note .c-note { display: none; }
 .je-no { width: 150px; min-width: 150px; }
 .je-no .je-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 2px 0 5px; }
@@ -618,3 +618,20 @@ table.je-grid .c-del .btn { padding: 2px 6px; }
 /* النسخة الاحتياطية */
 .bk-bar { height: 8px; border-radius: 8px; background: var(--surface-3); overflow: hidden; margin: 12px 0 8px; }
 .bk-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+
+/* السيولة */
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 2px; }
+.kpi small { color: var(--ink-3); font-size: 12.5px; }
+.kpi b { font-size: 22px; font-variant-numeric: tabular-nums; direction: ltr; text-align: right; }
+.kpi span { color: var(--ink-2); font-size: 12.5px; }
+.kpi.main { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.kpi.main b { color: var(--accent); }
+.kpi.bad { border-color: var(--bad); }
+.kpi.bad b { color: var(--bad); }
+.pos { color: var(--ok); }
+table.grid tr.sub td { font-weight: 600; background: var(--surface-2); }
+table.grid tr.group td { font-weight: 700; background: var(--surface-3); }
+table.fc tbody tr { cursor: pointer; }
+span.neg { color: var(--bad); }
+table.je-grid .c-due .cell-input { width: 124px; min-width: 0; }

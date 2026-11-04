@@ -5,12 +5,12 @@ import { state } from '../../shared/state.js';
 import { loadLookups, picker, companySelect, yearStart, today, typeLabel, parseAcc } from './lookups.js';
 import { openEntry } from './register.js';
 
-const N = (v) => (v === null || v === undefined || v === '' ? '' : fmt.num(v));
-const neg = (v) => (Number(v) < 0 ? 'num neg' : 'num');
+export const N = (v) => (v === null || v === undefined || v === '' ? '' : fmt.num(v));
+export const neg = (v) => (Number(v) < 0 ? 'num neg' : 'num');
 
-function dateInput(v) { return h('input', { class: 'input', type: 'date', value: v, style: { width: 'auto' } }); }
+export function dateInput(v) { return h('input', { class: 'input', type: 'date', value: v, style: { width: 'auto' } }); }
 
-function exportAoa(name, aoa) {
+export function exportAoa(name, aoa) {
   const ws = window.XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = aoa[0].map(() => ({ wch: 18 }));
   const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, 'تقرير');
@@ -45,7 +45,7 @@ export function printReport(content, { title, company, period, fit = false, sign
   setTimeout(() => window.print(), 60);
 }
 
-function frame(el, controls, onRun) {
+export function frame(el, controls, onRun) {
   const out = h('div');
   const run = h('button', { class: 'btn primary', onclick: () => go() }, 'عرض');
   const exp = h('button', { class: 'btn', disabled: true }, 'تصدير Excel');

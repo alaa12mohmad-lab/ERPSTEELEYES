@@ -200,6 +200,8 @@ export default {
           { key: 'is_customer', label: 'عميل', type: 'bool' },
           { key: 'is_supplier', label: 'مورد', type: 'bool' },
           { key: 'tax_number', label: 'الرقم الضريبي', ltr: true, inputmode: 'numeric', help: '15 رقمًا' },
+          { key: 'customer_terms_days', label: 'مدة سداد العميل (يوم)', type: 'number', help: 'ميعاد استحقاق فواتيره = تاريخ الفاتورة + المدة (أعمار الديون والسيولة)' },
+          { key: 'supplier_terms_days', label: 'مدة السداد للمورد (يوم)', type: 'number' },
           { key: 'phone', label: 'الجوال', ltr: true },
           { key: 'contact_person', label: 'الشخص المسؤول' },
           { key: 'notes', label: 'ملاحظات', type: 'textarea' },
