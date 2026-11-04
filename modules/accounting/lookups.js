@@ -1,9 +1,13 @@
 // قوائم الاختيار للمحاسبة (الحسابات، الأطراف، الموظفون، المشاريع، المراكز، المعدات) + مكوّن الاختيار
-import { core, acc } from '../../shared/sb.js';
+import { core, acc, rpcListeners } from '../../shared/sb.js';
 import { h, store } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
+import { combo } from '../../shared/combo.js';
 
 const cache = new Map();
+// أي حفظ أو تعديل أو إلغاء أو حذف قيد → الأرصدة في القوائم تتحدّث في الفتح الجاي
+const MUTATE = new Set(['post_batch', 'edit_entry', 'cancel_entry', 'delete_entry', 'reverse_entry', 'approve_proposed']);
+rpcListeners.add((fn) => { if (MUTATE.has(fn)) for (const lk of cache.values()) lk.staleBalances?.(); });
 
 export function clearLookups() { cache.clear(); }
 
@@ -23,12 +27,13 @@ export async function loadLookups(company, { force = false } = {}) {
     const r = rows.find((x) => x.company_id === company) || rows.find((x) => !x.company_id);
     return r ? r.value : d;
   };
-  const opt = (r, code, name) => ({ id: r.id, code, name, label: `${code} — ${name}`, row: r });
+  const opt = (r, code, name, group, kind) => ({ id: r.id, code, name, label: `${code} — ${name}`, row: r, group, kind });
+  const pkind = (r) => (r.is_customer && r.is_supplier ? 'عميل ومورد' : r.is_customer ? 'عميل' : 'مورد');
   const lk = {
     company,
-    accounts: (accounts.data || []).map((r) => opt(r, r.code, r.name)),
-    parties: (parties.data || []).map((r) => opt(r, r.code, r.name)),
-    employees: (employees.data || []).map((r) => opt(r, r.employee_no, r.full_name)),
+    accounts: (accounts.data || []).map((r) => opt(r, r.code, r.name, 'الحسابات', r.is_postable ? null : 'مجمّع')),
+    parties: (parties.data || []).map((r) => opt(r, r.code, r.name, null, pkind(r))),
+    employees: (employees.data || []).map((r) => opt(r, r.employee_no, r.full_name, null, 'موظف')),
     projects: (projects.data || []).filter((p) => p.companies.some((c) => c.id === company)).map((r) => opt(r, r.code, r.name)),
     allProjects: (projects.data || []).map((r) => opt(r, r.code, r.name)),
     costCenters: (costCenters.data || []).filter((c) => !c.company_id || c.company_id === company).map((r) => opt(r, r.code, r.name)),
@@ -41,8 +46,42 @@ export async function loadLookups(company, { force = false } = {}) {
   lk.suppliers = lk.parties.filter((p) => p.row.is_supplier);
   lk.byId = (list, id) => lk[list].find((o) => o.id === id);
   buildPartyCombos(lk);
+  attachBalances(lk);
   cache.set(company, lk);
   return lk;
+}
+
+// ---------------------------------------------------------------------
+// الأرصدة جنب الأسماء في القوائم: رصيد الحساب من أول السنة لليوم، ورصيد الطرف/الموظف.
+//   تتحمّل عند أول فتح لقائمة وتتجدد لو عدّى عليها أكتر من دقيقة
+// ---------------------------------------------------------------------
+const money = (n) => Math.abs(n).toLocaleString('en', { maximumFractionDigits: 2 });
+function attachBalances(lk) {
+  const bal = { acc: new Map(), party: new Map(), at: 0, loading: null };
+  lk.loadBalances = async () => {
+    if (Date.now() - bal.at < 60000) return false;
+    if (bal.loading) return bal.loading;
+    bal.loading = (async () => {
+      const [tb, pb] = await Promise.all([
+        acc.rpc('trial_balance', { p_company: lk.company, p_from: yearStart(), p_to: today() }),
+        acc.rpc('party_balances', { p_company: lk.company, p_as_of: today() }),
+      ]);
+      bal.acc.clear(); bal.party.clear();
+      for (const r of tb.data || []) bal.acc.set(r.account_id, Number(r.closing_debit) - Number(r.closing_credit));
+      for (const r of pb.data || []) bal.party.set(r.party_id || r.employee_id, Number(r.balance));
+      bal.at = Date.now(); bal.loading = null;
+      return true;
+    })().catch(() => { bal.loading = null; return false; });
+    return bal.loading;
+  };
+  lk.staleBalances = () => { bal.at = 0; };
+  // النص الجانبي: "130,000 د" أو "15,000 م" (فاضي لو صفر أو مش متحمّل)
+  lk.balText = (o) => {
+    if (!bal.at || !o) return '';
+    const v = o.combo || o.kind === 'موظف' || (o.row && 'is_customer' in o.row) ? bal.party.get(o.party || o.id) : bal.acc.get(o.id);
+    if (!v || Math.abs(v) < 0.005) return '';
+    return money(v) + (v > 0 ? ' مدين' : ' دائن');
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -79,7 +118,9 @@ function defaultAccount(lk, party, role) {
 function comboOpt(lk, p, accountId) {
   const a = lk.postable.find((x) => x.id === accountId) || lk.accounts.find((x) => x.id === accountId);
   if (!a) return null;
-  return { id: comboId(p.id, accountId), code: p.code, name: p.name, label: `${p.code} — ${p.name} ← ${a.name}`, combo: true, party: p.id, account: accountId, row: a.row };
+  const role = a.row.party_kind === 'customer' ? 'عميل' : a.row.party_kind === 'supplier' ? 'مورد' : (p.row?.is_supplier ? 'مورد' : 'عميل');
+  return { id: comboId(p.id, accountId), code: p.code, name: p.name, comboName: `${p.name} ← ${a.name}`, label: `${p.code} — ${p.name} ← ${a.name}`,
+    combo: true, party: p.id, account: accountId, row: a.row, group: 'الموردون والعملاء', kind: role };
 }
 
 function buildPartyCombos(lk) {
@@ -112,7 +153,7 @@ function buildPartyCombos(lk) {
   lk.isPartyAccount = (account) => partyAccount(lk.postable.find((a) => a.id === account) || lk.accounts.find((a) => a.id === account));
   // طرف جديد اتضاف: يدخل كل القوائم المفتوحة فورًا
   lk.addParty = (r) => {
-    const o = { id: r.id, code: r.code, name: r.name, label: `${r.code} — ${r.name}`, row: r };
+    const o = { id: r.id, code: r.code, name: r.name, label: `${r.code} — ${r.name}`, row: r, kind: r.is_customer && r.is_supplier ? 'عميل ومورد' : r.is_customer ? 'عميل' : 'مورد' };
     const ins = (arr) => arr.splice(arr[arr.length - 1] === NEW_PARTY ? arr.length - 1 : arr.length, 0, o);
     ins(lk.parties); ins(lk.partyLists.party);
     if (r.is_customer) { ins(lk.customers); ins(lk.partyLists.cust); }
@@ -129,62 +170,12 @@ function buildPartyCombos(lk) {
   };
 }
 
-// datalist مشتركة لكل نوع قائمة (حتى لا تتكرر مع كل خلية)
-export function ensureDatalist(key, options) {
-  const id = 'dl-' + key;
-  let dl = document.getElementById(id);
-  if (!dl) { dl = h('datalist', { id }); document.body.append(dl); }
-  const sig = String(options.length) + (options[0]?.id || '') + (options[options.length - 1]?.id || '');
-  if (dl.dataset.sig !== sig) {
-    dl.replaceChildren(...options.map((o) => h('option', { value: o.label })));
-    dl.dataset.sig = sig;
-  }
-  return id;
-}
+// (توافق مع الكود القديم: القوائم بقت عائمة ومش محتاجة datalist)
+export function ensureDatalist() { return ''; }
 
-// حقل اختيار بالبحث: يقبل الكود أو الاسم أو "الكود — الاسم"
-//   خيار special (مثل "إضافة طرف جديد") لا يُختار بالبحث الجزئي، واختياره يستدعي onSpecial
-export function picker({ options, listKey, value = null, placeholder = '', cls = '', onChange, onSpecial, disabled = false }) {
-  const input = h('input', { class: 'input cell-input ' + cls, placeholder, disabled, autocomplete: 'off' });
-  let opts = options; let id = null;
-  const setList = (o, key) => { opts = o; input.setAttribute('list', ensureDatalist(key, o)); };
-  setList(options, listKey);
-  const set = (v) => {
-    id = v || null;
-    const o = id ? opts.find((x) => x.id === id) : null;
-    input.value = o ? o.label : '';
-    input.title = input.value;
-    input.classList.remove('invalid');
-    input.dataset.id = id || '';
-  };
-  const resolve = () => {
-    const t = input.value.trim();
-    if (!t) { if (id !== null) { id = null; input.dataset.id = ''; onChange?.(null); } input.classList.remove('invalid'); return; }
-    const low = t.toLowerCase();
-    const sp = opts.find((x) => x.special && x.label === t);
-    if (sp) { set(id); onSpecial?.(sp, t); return; }
-    const real = opts.filter((x) => !x.special);
-    // الحساب العادي يسبق خيار الطرف المركّب عند تطابق الكود
-    const byCode = real.filter((x) => String(x.code).toLowerCase() === low);
-    const part = real.filter((x) => x.label.toLowerCase().includes(low));
-    const o = real.find((x) => x.label === t) || byCode.find((x) => !x.combo) || byCode[0] || real.find((x) => x.name === t)
-      || (part.length === 1 ? part[0] : null);
-    if (o) {
-      input.value = o.label; input.title = o.label; input.classList.remove('invalid');
-      if (o.id !== id) { id = o.id; input.dataset.id = id; onChange?.(o); }
-    } else { input.classList.add('invalid'); if (id !== null) { id = null; input.dataset.id = ''; onChange?.(null); } }
-  };
-  input.addEventListener('change', resolve);
-  input.addEventListener('blur', resolve);
-  set(value);
-  return {
-    el: input,
-    get id() { return id; },
-    set, resolve,
-    setOptions(o, key) { const keep = id; setList(o, key); set(o.some((x) => x.id === keep) ? keep : null); },
-    setDisabled(d) { input.disabled = d; if (d) set(null); },
-  };
-}
+// حقل اختيار بالبحث: يقبل الكود أو الاسم. القائمة العائمة في shared/combo.js
+//   meta(o): نص جانبي (الرصيد)، onOpen(): يتنادى عند فتح القائمة (تحميل الأرصدة)
+export function picker(opts) { return combo(opts); }
 
 // اختيار شركة واحدة داخل شاشة المحاسبة
 export function companySelect(onChange, { includeAll = false } = {}) {

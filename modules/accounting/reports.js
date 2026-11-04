@@ -17,11 +17,43 @@ function exportAoa(name, aoa) {
   window.XLSX.writeFile(wb, name + '.xlsx');
 }
 
+// طباعة تقرير: راس فيه الشركة والعنوان والفترة، والمحتوى، وسطر توقيعات اختياري.
+//   fit: يصغّر التقرير لحد ما يدخل في صفحة A4 واحدة (لحد 62% عشان يفضل مقروء)، ولو أطول يتقسم وراس الجدول يتكرر
+export function printReport(content, { title, company, period, fit = false, sign = false } = {}) {
+  document.getElementById('print-area')?.remove();
+  const body = content.cloneNode(true);
+  body.querySelectorAll('button, .fin-title, .no-print').forEach((x) => x.remove());
+  const area = h('div', { id: 'print-area', class: 'rp' + (fit ? ' fit' : '') },
+    h('div', { class: 'rp-head' },
+      h('div', {}, h('div', { class: 'rp-co' }, company || ''), h('div', { class: 'rp-title' }, title || '')),
+      h('div', { class: 'rp-period' }, period || '')),
+    body,
+    sign ? h('div', { class: 'pv-sign rp-sign' }, ['أعدّه', 'راجعه', 'اعتمده'].map((t) => h('div', {}, h('div', { class: 'pv-sl' }, t), h('div', { class: 'pv-line' }), h('div', { class: 'rp-sd' }, 'التاريخ: ..../..../........')))) : null,
+    h('div', { class: 'pv-foot' }, `طُبع ${fmt.datetime(new Date())} — ${state.profile?.full_name || ''}`));
+  document.body.append(area);
+  if (fit) {
+    // قياس بعرض صفحة A4 (186 مم بعد الهوامش) ومقارنة بارتفاعها (273 مم)
+    Object.assign(area.style, { display: 'block', position: 'absolute', top: '0', left: '-10000px', width: '186mm', visibility: 'hidden' });
+    const mm = 96 / 25.4; const hgt = area.scrollHeight;
+    const scale = Math.max(0.62, Math.min(1, (271 * mm) / hgt));
+    Object.assign(area.style, { display: '', position: '', top: '', left: '', width: '', visibility: '' });
+    if (scale < 1) area.style.zoom = String(Math.floor(scale * 100) / 100);
+  }
+  document.body.classList.add('printing');
+  const done = () => { document.body.classList.remove('printing'); area.remove(); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  setTimeout(() => window.print(), 60);
+}
+
 function frame(el, controls, onRun) {
   const out = h('div');
   const run = h('button', { class: 'btn primary', onclick: () => go() }, 'عرض');
   const exp = h('button', { class: 'btn', disabled: true }, 'تصدير Excel');
-  const prn = h('button', { class: 'btn', onclick: () => window.print() }, 'طباعة');
+  let last = null;
+  const prn = h('button', { class: 'btn', onclick: () => {
+    if (!out.childNodes.length) return window.print();
+    printReport(out, { title: last?.name || document.title, ...(last?.print || {}) });
+  } }, 'طباعة');
   el.replaceChildren(h('div', { class: 'card', style: { marginBottom: '12px' } }, h('div', { class: 'toolbar' }, ...controls, h('div', { class: 'grow' }), run, exp, prn)), out);
   let seq = 0;
   async function go() {
@@ -32,6 +64,7 @@ function frame(el, controls, onRun) {
       const r = await onRun(tmp);
       if (my !== seq) return;
       out.replaceChildren(...tmp.childNodes);
+      last = r || null;
       exp.disabled = !r?.aoa;
       exp.onclick = () => r?.aoa && exportAoa(r.name, r.aoa);
     } catch (e) { if (my === seq) out.replaceChildren(h('div', { class: 'notice bad' }, e.message)); }
@@ -92,7 +125,7 @@ export async function renderStatement(el) {
   async function reload() {
     lk = await loadLookups(company);
     // الحساب أو اسم المورد/العميل (يختار حسابه والطرف معًا)
-    accP = picker({ options: [...lk.accounts, ...lk.accountOptions.filter((x) => x.combo)], listKey: 'allaccx-' + company, placeholder: 'الحساب أو المورد/العميل',
+    accP = picker({ options: [...lk.accounts, ...lk.accountOptions.filter((x) => x.combo)], listKey: 'allaccx-' + company, placeholder: 'الحساب أو المورد/العميل', meta: lk.balText, onOpen: lk.loadBalances,
       onChange: (o) => { if (o?.combo) partyP.set(o.party); } });
     accP.el.style.minWidth = '260px';
     partyP = picker({ options: [...lk.parties, ...lk.employees.map((x) => ({ ...x, label: x.label + ' (موظف)', emp: true }))], listKey: 'partyemp-' + company, placeholder: 'الطرف أو الموظف (اختياري)' });
@@ -179,7 +212,7 @@ export function renderIncome(el) {
     const hasCmp = !!cf;
     const labels = [`${from.value} — ${to.value}`, hasCmp ? `${cf} — ${ct}` : ''];
     out.replaceChildren(h('h2', { class: 'fin-title' }, `قائمة الدخل — ${state.companyName(company)}`), statementTable(rows, hasCmp, labels));
-    return { name: 'قائمة الدخل', aoa: [['البند', 'الكود', labels[0], ...(hasCmp ? [labels[1]] : [])], ...rows.map((r) => [r.label, r.account_code || '', r.amount === null ? '' : Number(r.amount), ...(hasCmp ? [r.cmp_amount === null ? '' : Number(r.cmp_amount)] : [])])] };
+    return { name: 'قائمة الدخل', print: { company: state.companyName(company), period: `من ${from.value} إلى ${to.value}` + (hasCmp ? ` — مقارنة بـ ${cf} إلى ${ct}` : ''), fit: true, sign: true }, aoa: [['البند', 'الكود', labels[0], ...(hasCmp ? [labels[1]] : [])], ...rows.map((r) => [r.label, r.account_code || '', r.amount === null ? '' : Number(r.amount), ...(hasCmp ? [r.cmp_amount === null ? '' : Number(r.cmp_amount)] : [])])] };
   });
   go();
 }
@@ -196,7 +229,7 @@ export function renderBalanceSheet(el) {
     out.replaceChildren(h('h2', { class: 'fin-title' }, `المركز المالي — ${state.companyName(company)}`),
       Number(check?.amount) !== 0 ? h('div', { class: 'notice bad', style: { marginBottom: '10px' } }, 'المركز المالي غير متوازن') : '',
       statementTable(rows, hasCmp, [asOf.value, cmp.value]));
-    return { name: 'المركز المالي', aoa: [['البند', 'الكود', asOf.value, ...(hasCmp ? [cmp.value] : [])], ...rows.map((r) => [r.label, r.account_code || '', r.amount === null ? '' : Number(r.amount), ...(hasCmp ? [r.cmp_amount === null ? '' : Number(r.cmp_amount)] : [])])] };
+    return { name: 'المركز المالي', print: { company: state.companyName(company), period: `في ${asOf.value}` + (hasCmp ? ` — مقارنة بـ ${cmp.value}` : ''), fit: true, sign: true }, aoa: [['البند', 'الكود', asOf.value, ...(hasCmp ? [cmp.value] : [])], ...rows.map((r) => [r.label, r.account_code || '', r.amount === null ? '' : Number(r.amount), ...(hasCmp ? [r.cmp_amount === null ? '' : Number(r.cmp_amount)] : [])])] };
   });
   go();
 }

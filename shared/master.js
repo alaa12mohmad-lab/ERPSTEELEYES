@@ -73,7 +73,7 @@ export function renderMaster(container, cfg) {
     canAdd() && h('button', { class: 'btn primary', onclick: () => openForm(null) }, '+ إضافة'),
     cfg.importable && canAdd() && h('button', { class: 'btn', onclick: openImport }, 'استيراد Excel'),
     h('button', { class: 'btn', onclick: exportXlsx }, 'تصدير'),
-    ...(cfg.toolbarExtras ? cfg.toolbarExtras({ reload: load }) : []));
+    ...(cfg.toolbarExtras ? cfg.toolbarExtras({ reload: load, redraw: () => draw() }) : []));
 
   container.replaceChildren(h('div', { class: 'card' }, toolbar, h('div', { class: 'table-wrap' }, table), countEl));
 
@@ -100,8 +100,9 @@ export function renderMaster(container, cfg) {
     return v instanceof Node ? v.textContent : (v ?? '');
   }
 
+  // cfg.rowVisible(r, rows): إخفاء صفوف من غير بحث (مثلًا طي الشجرة). البحث بيعرض كل النتائج
   function visibleRows() {
-    if (!search) return rows;
+    if (!search) return cfg.rowVisible ? rows.filter((r) => cfg.rowVisible(r, rows)) : rows;
     const s = search.toLowerCase();
     const keys = cfg.searchKeys || cfg.columns.map((c) => c.key);
     return rows.filter((r) => keys.some((k) => String(r[k] ?? '').toLowerCase().includes(s))

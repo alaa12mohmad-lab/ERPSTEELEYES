@@ -232,7 +232,7 @@ export function createEditor(opts) {
   function lineCells(e, ei, l, li) {
     // خانة الحساب تقبل الحساب أو اسم المورد/العميل (يختار حسابه ويسجّل الطرف)
     const accValue = () => (l.party_id && lk.isPartyAccount(l.account_id) ? lk.ensureCombo(l.party_id, l.account_id) : l.account_id);
-    const accP = picker({ options: lk.accountOptions, listKey: 'accx-' + company, value: accValue(), placeholder: 'الحساب أو المورد/العميل', cls: 'acc',
+    const accP = picker({ options: lk.accountOptions, listKey: 'accx-' + company, value: accValue(), placeholder: 'الحساب أو المورد/العميل', cls: 'acc', meta: lk.balText, onOpen: lk.loadBalances,
       onSpecial: async (_, typed) => {
         const o = await quickAddParty(lk, { name: '' });
         if (!o) return;
@@ -243,7 +243,7 @@ export function createEditor(opts) {
     accP.el.dataset.f = 'account';
     const dr = h('input', { class: 'input cell-input num', inputmode: 'decimal', value: l.debit, 'data-f': 'debit' });
     const cr = h('input', { class: 'input cell-input num', inputmode: 'decimal', value: l.credit, 'data-f': 'credit' });
-    const partyP = picker({ options: lk.partyLists.party, listKey: 'party+', value: l.party_id || l.employee_id, placeholder: 'الطرف',
+    const partyP = picker({ options: lk.partyLists.party, listKey: 'party+', value: l.party_id || l.employee_id, placeholder: 'الطرف', meta: lk.balText, onOpen: lk.loadBalances,
       onSpecial: async () => {
         const kind = accRow(l.account_id)?.party_kind === 'customer' || accRow(l.account_id)?.vat_role === 'output' ? 'customer' : 'supplier';
         const o = await quickAddParty(lk, { kind });

@@ -55,8 +55,11 @@ export async function insertRows(table, rows, schema) {
   return data;
 }
 
+// أي قسم يقدر يسمع لنداءات rpc الناجحة (مثلًا: تحديث الأرصدة المعروضة بعد حفظ قيد)
+export const rpcListeners = new Set();
 export async function rpc(fn, args = {}, schema) {
   const { data, error } = await db(schema).rpc(fn, args);
   if (error) throw new Error(errMsg(error));
+  rpcListeners.forEach((f) => { try { f(fn, schema); } catch { /* ignore */ } });
   return data;
 }

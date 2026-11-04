@@ -1,6 +1,6 @@
 // شجرة الحسابات
 import { acc, rpc, updateRow } from '../../shared/sb.js';
-import { h, modal, toast, confirmDialog } from '../../shared/ui.js';
+import { h, modal, toast, confirmDialog, store } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { renderMaster, opts } from '../../shared/master.js';
 import { companySelect, clearLookups, ACCOUNT_TYPES, RULES, PARTY_RULES, typeLabel } from './lookups.js';
@@ -26,9 +26,27 @@ export function renderAccounts(el) {
       h('span', { class: 'help' }, 'الحساب المجمّع لا يقبل الإدخال. الحساب الفاضي (بدون حركات ولا فروع) يُحذف، والحساب اللي عليه حركات يُوقف بشرط رصيد صفر.')),
     box);
 
+  // طي الشجرة: الحسابات المجمّعة المطوية محفوظة لكل شركة. الافتراضي: يظهر المستوى الأول والتاني بس
+  const foldKey = () => 'erp-acc-fold-' + company;
+  let folded = null; let redraw = () => {};
+  const saveFold = () => store.set(foldKey(), [...folded]);
+  const ensureFold = (rows) => {
+    if (folded) return;
+    const saved = store.get(foldKey(), null);
+    folded = new Set(Array.isArray(saved) ? saved : rows.filter((r) => r.has_children && r.depth >= 1).map((r) => r.code));
+  };
+  const rowVisible = (r, rows) => {
+    ensureFold(rows);
+    const parts = String(r.sort_path || '').split('/');
+    return !parts.slice(0, -1).some((c) => folded.has(c));
+  };
+  const toggle = (r) => { if (folded.has(r.code)) folded.delete(r.code); else folded.add(r.code); saveFold(); redraw(); };
+
   function draw() {
     clearLookups();
+    folded = null;
     renderMaster(box, {
+      rowVisible,
       title: 'الحساب', schema: 'accounting', table: 'accounts', view: 'v_accounts', module: 'accounting', wideForm: true, importable: true,
       levelAdd: 3, levelEdit: 3, allowStatus: false,
       rowActions: [
@@ -50,7 +68,10 @@ export function renderAccounts(el) {
       defaults: () => ({ company_id: company, is_postable: true, party_rule: 'optional', project_rule: 'optional', cost_center_rule: 'optional', equipment_rule: 'optional', vat_role: 'none' }),
       columns: [
         { key: 'code', label: 'الكود', render: (r) => h('span', { class: 'ltr', style: { fontWeight: r.is_postable ? 400 : 700 } }, r.code) },
-        { key: 'name', label: 'الاسم', render: (r) => h('span', { style: { paddingInlineStart: (r.depth * 22) + 'px', fontWeight: r.is_postable ? 400 : 700 } }, r.name) },
+        { key: 'name', label: 'الاسم', render: (r) => h('span', { class: 'tree-name', style: { paddingInlineStart: (r.depth * 22) + 'px', fontWeight: r.is_postable ? 400 : 700 } },
+          r.has_children ? h('button', { class: 'fold' + (folded?.has(r.code) ? ' shut' : ''), title: folded?.has(r.code) ? 'فتح' : 'طي',
+            onclick: (e) => { e.stopPropagation(); toggle(r); } }, '▾') : h('span', { class: 'fold-sp' }),
+          r.name) },
         { key: 'account_type', label: 'النوع', render: (r) => typeLabel(r.account_type) },
         { key: 'is_postable', label: 'الإدخال', render: (r) => (r.is_postable ? 'قابل للإدخال' : h('span', { class: 'badge' }, 'مجمّع')) },
         { key: 'cls', label: 'التبويب', render: (r) => (r.is_postable ? [lbl(BS, r.bs_section) || lbl(INC, r.income_level), lbl(CF, r.cashflow_class)].filter(Boolean).join(' • ') : '') },
@@ -105,7 +126,16 @@ export function renderAccounts(el) {
           : r.has_children ? 'الحساب لا يُحذف لأن له حسابات فرعية (ولو موقوفة). احذف الفروع الأول.' : '';
         if (why) box.append(h('div', { class: 'notice', style: { marginTop: '10px' } }, why));
       },
-      toolbarExtras: () => [h('button', { class: 'btn', onclick: copyChart }, 'نسخ الشجرة من شركة أخرى')],
+      toolbarExtras: (ctx) => {
+        redraw = ctx.redraw;
+        const all = (shut) => async () => {
+          const { data } = await acc.from('v_accounts').select('code, has_children').eq('company_id', company);
+          folded = new Set(shut ? (data || []).filter((r) => r.has_children).map((r) => r.code) : []);
+          saveFold(); redraw();
+        };
+        return [h('button', { class: 'btn', onclick: all(false) }, 'فتح الكل'), h('button', { class: 'btn', onclick: all(true) }, 'طي الكل'),
+          h('button', { class: 'btn', onclick: copyChart }, 'نسخ الشجرة من شركة أخرى')];
+      },
     });
   }
 

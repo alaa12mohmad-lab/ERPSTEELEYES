@@ -18,6 +18,7 @@ import { MODES, ACCENTS, getTheme, setTheme } from './shared/theme.js';
 import { SCENES, POWERS, getBackdrop, setBackdrop, mountBackdrop } from './shared/backdrop.js';
 import { renderLogin, renderMessage, renderChangePassword, renderMfa, changePasswordForm, mfaForm } from './shared/auth.js';
 import { mountAssistant } from './shared/assistant.js';
+import { runBackup, askBackupBeforeLogout, lastBackup } from './shared/backup.js';
 import coreModule from './modules/core/index.js';
 import adminModule from './modules/admin/index.js';
 import accountingModule from './modules/accounting/index.js';
@@ -135,7 +136,8 @@ function toggleMenu() {
     h('div', { class: 'sec' }, 'الحساب'),
     h('button', { onclick: () => { toggleMenu(); openChangePassword(); } }, 'تغيير كلمة السر'),
     h('button', { onclick: () => { toggleMenu(); openMfa(); } }, 'التحقق بخطوتين'),
-    h('button', { onclick: () => sb.auth.signOut() }, 'تسجيل خروج'));
+    p.is_admin ? h('button', { onclick: () => { toggleMenu(); runBackup(); }, title: lastBackup() ? 'آخر نسخة: ' + lastBackup().toLocaleString('ar-EG') : 'لم تُعمل نسخة من هذا الجهاز' }, 'نسخة احتياطية الآن') : null,
+    h('button', { onclick: async () => { toggleMenu(); if (await askBackupBeforeLogout()) sb.auth.signOut(); } }, 'تسجيل خروج'));
   document.body.append(menuEl);
 }
 document.addEventListener('click', () => { if (menuEl) { menuEl.remove(); menuEl = null; } });
