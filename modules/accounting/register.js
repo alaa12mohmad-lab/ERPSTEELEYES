@@ -1,4 +1,5 @@
 // سجل القيود + نافذة القيد (طباعة، تعديل، إلغاء، عكس، حذف، سجل التعديلات)
+import { salesEditor } from './sales.js';
 import { acc, core, rpc, errMsg } from '../../shared/sb.js';
 import { h, modal, toast, fmt, askReason } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
@@ -253,12 +254,13 @@ function showDeleted(d, name) {
         h('td', {}, l.cost_center || ''), h('td', {}, l.equipment || ''), h('td', {}, l.description || '')))))));
 }
 
+const SRC = { sales: 'فواتير المبيعات', payroll: 'الرواتب', equipment: 'المعدات', custody: 'العهد' };
 export function renderProposed(el) {
   const stateSel = h('select', { class: 'input', style: { width: 'auto' } },
     h('option', { value: 'pending' }, 'بانتظار الاعتماد'), h('option', { value: 'approved' }, 'المعتمدة'), h('option', { value: 'rejected' }, 'المرفوضة'));
   const tbody = h('tbody');
   el.replaceChildren(
-    h('p', { class: 'notice', style: { marginBottom: '12px' } }, 'القيود التي تجهزها الأقسام الأخرى (الرواتب، المعدات، العهد…) تنتظر هنا ولا تؤثر على أي رصيد حتى تعتمدها.'),
+    h('p', { class: 'notice', style: { marginBottom: '12px' } }, 'القيود اللي بتيجي من فواتير المبيعات والأقسام التانية (الرواتب، المعدات، العهد…) بتستنى هنا، وما بتأثرش على أي رصيد لحد ما تعتمدها.'),
     h('div', { class: 'card' }, h('div', { class: 'toolbar' }, stateSel),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
         h('thead', {}, h('tr', {}, ['التاريخ', 'الشركة', 'المصدر', 'المرجع', 'البيان', 'المبلغ', 'الحالة'].map((t) => h('th', {}, t)))), tbody))));
@@ -267,7 +269,7 @@ export function renderProposed(el) {
     const { data, error } = await acc.from('proposed_entries').select('*').eq('state', stateSel.value).in('company_id', state.selectedCompanies).order('created_at', { ascending: false }).limit(500);
     if (error) { tbody.replaceChildren(h('tr', {}, h('td', { colspan: 7, class: 'empty' }, errMsg(error)))); return; }
     tbody.replaceChildren(...(data.length ? data.map((p) => h('tr', { onclick: () => openProposed(p) },
-      h('td', {}, fmt.date(p.entry_date)), h('td', {}, state.companyName(p.company_id)), h('td', {}, p.source_module), h('td', {}, p.source_ref || ''),
+      h('td', {}, fmt.date(p.entry_date)), h('td', {}, state.companyName(p.company_id)), h('td', {}, SRC[p.source_module] || p.source_module), h('td', {}, p.source_module === 'sales' ? '' : p.source_ref || ''),
       h('td', {}, p.description), h('td', { class: 'num' }, fmt.num(p.lines.reduce((s, l) => s + Number(l.debit || 0), 0))),
       h('td', {}, p.state === 'pending' ? h('span', { class: 'badge warn' }, 'معلّق') : p.state === 'approved' ? h('span', { class: 'badge ok' }, 'معتمد') : h('span', { class: 'badge bad' }, 'مرفوض'))))
       : [h('tr', {}, h('td', { colspan: 7, class: 'empty' }, 'لا توجد قيود'))]));
@@ -286,7 +288,8 @@ export function renderProposed(el) {
     const nm = (list, id, f = 'name') => (list.data || []).find((x) => x.id === id)?.[f] || '';
     m.body.append(h('dl', { class: 'kv', style: { marginBottom: '12px' } },
       h('dt', {}, 'الشركة'), h('dd', {}, state.companyName(p.company_id)), h('dt', {}, 'التاريخ'), h('dd', {}, fmt.date(p.entry_date)),
-      h('dt', {}, 'المصدر'), h('dd', {}, `${p.source_module}${p.source_ref ? ' — ' + p.source_ref : ''}`),
+      h('dt', {}, 'المصدر'), h('dd', {}, p.source_module === 'sales' ? h('a', { href: 'javascript:void 0', onclick: () => { m.close(); salesEditor({ id: p.source_ref, onDone: load }); } }, 'فاتورة مبيعات — فتح الفاتورة')
+        : `${SRC[p.source_module] || p.source_module}${p.source_ref ? ' — ' + p.source_ref : ''}`),
       p.reject_reason && [h('dt', {}, 'سبب الرفض'), h('dd', {}, p.reject_reason)]),
       h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['الحساب', 'مدين', 'دائن', 'الطرف', 'المشروع', 'المركز', 'المعدة', 'البيان'].map((t) => h('th', {}, t)))),
         h('tbody', {}, p.lines.map((l) => h('tr', { style: { cursor: 'default' } },

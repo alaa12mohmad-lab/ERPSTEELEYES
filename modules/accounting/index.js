@@ -10,6 +10,7 @@ import { renderLiquidity, renderCashFlow, renderAging, renderCommitments } from 
 import { renderBank } from './bank.js';
 import { renderContracts } from './contracts.js';
 import { renderClosing } from './closing.js';
+import { renderSales } from './sales.js';
 
 const IN = 'الإدخال', SETUP = 'الإعداد', REP = 'التقارير', TAX = 'الفواتير والضريبة', CASH = 'السيولة';
 
@@ -22,7 +23,7 @@ export default {
     { path: 'proposed', title: 'القيود المقترحة', group: IN, render: renderProposed },
     { path: 'deleted', title: 'القيود المحذوفة', group: IN, render: renderDeleted, visible: () => state.can('accounting', 3) },
     { path: 'import', title: 'استيراد قيود من Excel', group: IN, subtitle: 'القيود والأرصدة الافتتاحية من المنارة أو أي ملف بنفس الأعمدة — مراجعة كاملة قبل الحفظ', render: renderImport, visible: () => state.can('accounting', 3) },
-    { path: 'contracts', title: 'العقود والمستخلصات', group: 'المشاريع', wide: true, subtitle: 'عقود العملاء ومقاولي الباطن: المستخلصات والدفعات المقدمة والمحتجزات — كل مستخلص بيعمل قيده لوحده', render: renderContracts },
+    { path: 'contracts', title: 'العقود وأوامر الشراء', group: 'المشاريع', wide: true, subtitle: 'عقود العملاء وأوامر الشراء منهم ومقاولي الباطن: القيمة وتعديلاتها، والمستخلصات والفواتير، والدفعات المقدمة والمحتجزات', render: renderContracts },
     { path: 'liquidity', title: 'السيولة', group: CASH, subtitle: 'رصيد النقدية دلوقتي، والمتوقع للأسابيع والشهور الجاية', render: renderLiquidity },
     { path: 'cash-flow', title: 'التدفقات النقدية', group: CASH, subtitle: 'الفلوس جت منين وراحت فين — بالطريقة المباشرة، شهر بشهر', render: renderCashFlow },
     { path: 'bank', title: 'مطابقة البنك', group: CASH, wide: true, subtitle: 'ارفع كشف الحساب من البنك، والنظام يطابقه مع القيود ويطلعلك الفروق', render: renderBank },
@@ -37,6 +38,7 @@ export default {
     { path: 'parties', title: 'أرصدة الأطراف', group: REP, render: renderPartyBalances },
     { path: 'projects', title: 'ربحية المشاريع', group: REP, render: renderProjects },
     { path: 'equipment', title: 'المعدات', group: REP, render: renderEquipment },
+    { path: 'sales', title: 'فواتير المبيعات', group: TAX, wide: true, subtitle: 'فواتير المنارة برقمها: تتربط بالعقد أو أمر الشراء والمشروع، وتعدّي على الاعتماد قبل ما تبقى قيد', render: renderSales },
     { path: 'invoices', title: 'الفواتير', group: TAX, render: renderInvoices },
     { path: 'vat', title: 'الإقرار الضريبي', group: TAX, render: renderVatReturn },
   ],

@@ -652,3 +652,6 @@ table.grid td.acts { white-space: nowrap; text-align: left; }
 .pbar i { display: block; height: 100%; background: var(--accent); }
 table.contracts tbody tr { cursor: pointer; }
 table.grid tr.cancelled td { text-decoration: line-through; color: var(--ink-3); }
+/* 1.5 فواتير المبيعات وأوامر الشراء */
+.pbar.over i { background: var(--bad); }
+.kpi .bad, .kpi span.bad { color: var(--bad); font-weight: 600; }
