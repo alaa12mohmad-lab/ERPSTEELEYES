@@ -645,3 +645,9 @@ table.grid td.wrap { white-space: normal; max-width: 340px; }
 table.grid td.acts { white-space: nowrap; text-align: left; }
 .recon-sheet { max-width: 620px; padding: 4px 8px; }
 .recon-sheet td:first-child { color: var(--ink-2); }
+
+/* العقود */
+.pbar { height: 4px; border-radius: 4px; background: var(--surface-3); margin-top: 4px; overflow: hidden; min-width: 70px; }
+.pbar i { display: block; height: 100%; background: var(--accent); }
+table.contracts tbody tr { cursor: pointer; }
+table.grid tr.cancelled td { text-decoration: line-through; color: var(--ink-3); }

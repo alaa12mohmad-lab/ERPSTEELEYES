@@ -73,6 +73,15 @@ async function collectEvents(ids, from, to) {
       d = ymd(new Date(y, m, day));
     }
   }
+  // المحتجزات: تتفك في نهاية العقد (داخل من العملاء، خارج لمقاولي الباطن)
+  try {
+    const cs = await rpc('contract_status', { p_companies: ids }, 'accounting');
+    for (const k of cs) {
+      if (k.status !== 'active' || !k.end_date || Number(k.retention_held) < 0.005 || k.end_date > to) continue;
+      events.push({ date: k.end_date < from ? from : k.end_date, origDue: k.end_date, overdue: k.end_date < from, company: k.company_id, kind: k.kind === 'customer' ? 'in' : 'out',
+        label: `فك محتجز — عقد ${k.contract_no} (${k.party_name})`, amount: k.kind === 'customer' ? Number(k.retention_held) : -Number(k.retention_held) });
+    }
+  } catch { /* العقود مش متفعلة (010/011 ما اتشغلتش) */ }
   for (const id of ids) {
     const inv = await rpc('open_invoices', { p_company: id, p_as_of: today(), p_party: null }, 'accounting');
     for (const r of inv) {
