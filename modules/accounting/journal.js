@@ -78,14 +78,17 @@ export function renderJournal(el, { focusEntry } = {}) {
   // ===================================================================
   // صفحة جديدة
   // ===================================================================
-  const draftKey = () => 'erp-je-draft-' + company;
+  // المسودة لكل مستخدم: لو أكتر من حد بيستخدم نفس الجهاز ماحدش يشوف مسودة التاني
+  const draftKey = () => `erp-je-draft-${company}-${state.profile?.id || ''}`;
   let saveTimer = null;
   const saveDraft = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set(draftKey(), editor?.entries), 400); };
   let editor = null;
 
   function openNew() {
     mode = 'new'; idx = -1;
-    const d = store.get(draftKey(), null);
+    let d = store.get(draftKey(), null);
+    const old = 'erp-je-draft-' + company;   // مسودة من إصدار قديم (قبل 0.8.1)
+    if (!d && store.get(old, null)) { d = store.get(old, null); store.set(draftKey(), d); localStorage.removeItem(old); }
     const list = Array.isArray(d) && d.length ? d.map((e) => ({ ...emptyEntry(), ...e, lines: (e.lines || []).map((l) => ({ ...emptyLine(), ...l })) })) : [emptyEntry()];
     if (!state.can('accounting', 2)) {
       body.replaceChildren(h('div', { class: 'notice' }, 'صلاحيتك عرض القيود فقط. استخدم أزرار التنقل لعرض الصفحات المحفوظة.'));

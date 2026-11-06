@@ -334,6 +334,7 @@ textarea.input { min-height: 80px; resize: vertical; }
 .toast { background: var(--brand); color: var(--brand-ink); padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow-lg); max-width: 400px; font-size: 14px; animation: rise .16s ease-out; }
 .toast.bad { background: var(--bad); color: #fff; }
 .toast.ok { background: var(--ok); color: #fff; }
+.toast.warn { background: var(--warn); color: #fff; }
 
 .notice { padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
 .notice.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }

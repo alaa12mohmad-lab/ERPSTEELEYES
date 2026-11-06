@@ -11,7 +11,7 @@
 // إضافة قسم جديد = إنشاء مجلده وإضافته لقائمة MODULES فقط.
 import { CONFIG } from './config.js';
 import { VERSION } from './shared/version.js';
-import { sb } from './shared/sb.js';
+import { sb, core } from './shared/sb.js';
 import { h, toast, modal, icon, store } from './shared/ui.js';
 import { state } from './shared/state.js';
 import { MODES, ACCENTS, getTheme, setTheme } from './shared/theme.js';
@@ -19,6 +19,7 @@ import { SCENES, POWERS, getBackdrop, setBackdrop, mountBackdrop } from './share
 import { renderLogin, renderMessage, renderChangePassword, renderMfa, changePasswordForm, mfaForm } from './shared/auth.js';
 import { mountAssistant } from './shared/assistant.js';
 import { runBackup, askBackupBeforeLogout, lastBackup } from './shared/backup.js';
+import { startIdle, stopIdle, idleLogoutNotice } from './shared/idle.js';
 import coreModule from './modules/core/index.js';
 import adminModule from './modules/admin/index.js';
 import accountingModule from './modules/accounting/index.js';
@@ -48,7 +49,7 @@ async function afterLogin() {
 }
 
 sb.auth.onAuthStateChange((event) => {
-  if (event === 'SIGNED_OUT') { shell = null; renderLogin(root, afterLogin); }
+  if (event === 'SIGNED_OUT') { stopIdle(); shell = null; renderLogin(root, afterLogin); idleLogoutNotice(); }
 });
 
 // الأقسام المتاحة للمستخدم (مبنية + مفعّلة + صلاحية)
@@ -119,6 +120,36 @@ function renderShell() {
   root.replaceChildren(shell);
   mountAssistant(document.body);
   route();
+  startIdle();
+  if (p.is_admin) securityAlert(p);
+}
+
+// تنبيه المدير: أي تغيير في المستخدمين أو الأدوار أو الصلاحيات أو الإعدادات عمله حد غيره (أو من غير مستخدم) من آخر مرة شافه
+const SEC_TABLES = ['app_users', 'user_companies', 'user_projects', 'user_permission_overrides', 'user_sensitive_overrides', 'roles', 'role_permissions', 'role_sensitive', 'settings'].map((t) => 'core.' + t);
+const SELF_ONLY = ['last_login_at', 'must_change_password'];  // دخول المستخدم وتغيير كلمة سره بنفسه مش تغيير صلاحيات
+const SEC_NAMES = { 'core.app_users': 'المستخدمين', 'core.user_companies': 'شركات المستخدمين', 'core.user_projects': 'مشاريع المستخدمين', 'core.user_permission_overrides': 'استثناءات الصلاحيات',
+  'core.user_sensitive_overrides': 'استثناءات البيانات الحساسة', 'core.roles': 'الأدوار', 'core.role_permissions': 'صلاحيات الأدوار', 'core.role_sensitive': 'البيانات الحساسة للأدوار', 'core.settings': 'الإعدادات' };
+async function securityAlert(p) {
+  try {
+    const key = 'erp-sec-seen-' + p.id;
+    const since = store.get(key, null);
+    if (!since) { store.set(key, new Date().toISOString()); return; }  // أول مرة على الجهاز ده: نبدأ المتابعة من دلوقتي
+    const { data } = await core.from('audit_log').select('id, at, table_name, action, user_id, record_id, new_data')
+      .in('table_name', SEC_TABLES).gt('at', since).or(`user_id.is.null,user_id.neq.${p.id}`).order('at', { ascending: false }).limit(50);
+    const rows = (data || []).filter((r) => !(r.table_name === 'core.app_users' && r.action === 'update' && r.record_id === r.user_id
+      && Object.keys(r.new_data || {}).every((k) => SELF_ONLY.includes(k))));
+    if (!rows.length) { store.set(key, new Date().toISOString()); return; }
+    const by = {}; rows.forEach((r) => { by[r.table_name] = (by[r.table_name] || 0) + 1; });
+    const m = modal({ title: '⚠ تغييرات في الصلاحيات', size: 'narrow' });
+    m.body.append(
+      h('p', { style: { marginTop: 0 } }, 'فيه تغييرات في الصلاحيات أو المستخدمين ما اتعملتش من حسابك:'),
+      h('ul', {}, Object.entries(by).map(([t, n]) => h('li', {}, `${SEC_NAMES[t] || t}: ${n} تغيير`))),
+      h('p', { class: 'help' }, 'لو مش أنت اللي عملتها من أداة تانية، راجعها فورًا وغيّر كلمة السر.'));
+    const seen = () => store.set(key, new Date().toISOString());
+    m.foot.append(
+      h('button', { class: 'btn primary', onclick: () => { seen(); m.close(); location.hash = '#/admin/audit'; } }, 'افتح سجل المراجعة'),
+      h('button', { class: 'btn', onclick: () => { seen(); m.close(); } }, 'تمام، شفتها'));
+  } catch { /* التنبيه مش أساسي */ }
 }
 
 let menuEl = null;
