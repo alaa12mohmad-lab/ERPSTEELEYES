@@ -7,7 +7,7 @@ import { openEntry, entryBadges } from './register.js';
 import { createEditor, emptyEntry, emptyLine } from './editor.js';
 import { printEntries } from './print.js';
 
-// الصفحة المحفوظة: الأعمدة الفاضية في كل الأسطر تختفي
+// الصفحة المحفوظة: تختفي الأعمدة الفارغة في كل الأسطر
 function emptyCols(lines) {
   const has = { party: (l) => l.party_name, inv: (l) => l.invoice_no, invdate: (l) => l.invoice_date, due: (l) => l.due_date, tax: (l) => l.tax_base || (l.tax_category && l.tax_category !== 'standard'),
     project: (l) => l.project_name, cc: (l) => l.cost_center_name, eq: (l) => l.equipment_name, note: (l) => l.line_description };
@@ -78,7 +78,7 @@ export function renderJournal(el, { focusEntry } = {}) {
   // ===================================================================
   // صفحة جديدة
   // ===================================================================
-  // المسودة لكل مستخدم: لو أكتر من حد بيستخدم نفس الجهاز ماحدش يشوف مسودة التاني
+  // المسودة لكل مستخدم: إذا استخدم أكثر من شخص الجهاز نفسه لا يرى أحدهم مسودة الآخر
   const draftKey = () => `erp-je-draft-${company}-${state.profile?.id || ''}`;
   let saveTimer = null;
   const saveDraft = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set(draftKey(), editor?.entries), 400); };

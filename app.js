@@ -21,6 +21,7 @@ import { mountAssistant } from './shared/assistant.js';
 import { runBackup, askBackupBeforeLogout, lastBackup } from './shared/backup.js';
 import { startIdle, stopIdle, idleLogoutNotice } from './shared/idle.js';
 import { dailyIntegrity } from './modules/accounting/integrity.js';
+import { brand, loadBranding, logoEl, activeAnnouncement } from './shared/branding.js';
 import coreModule from './modules/core/index.js';
 import adminModule from './modules/admin/index.js';
 import accountingModule from './modules/accounting/index.js';
@@ -46,6 +47,7 @@ async function afterLogin() {
   if (!p.is_active) return renderMessage(root, 'حساب موقوف', 'حسابك موقوف. تواصل مع المحاسب.');
   if (p.must_change_password) return renderChangePassword(root, afterLogin);
   if (p.mfa_required && !p.mfa_ok) return renderMfa(root, afterLogin);
+  await loadBranding();
   renderShell();
 }
 
@@ -98,11 +100,11 @@ function renderShell() {
 
   shell.append(
     h('aside', { class: 'side' },
-      h('a', { class: 'side-brand', href: '#/' }, h('span', { class: 'logo' }, 'م'),
-        h('span', { class: 't' }, CONFIG.APP_NAME, h('small', {}, 'عيون الحديد • ريان • القيادة الذكية'))),
+      h('a', { class: 'side-brand', href: '#/' }, logoEl(),
+        h('span', { class: 't' }, CONFIG.APP_NAME, h('small', {}, brand.subtitle))),
       sideNav,
       h('div', { class: 'side-foot' },
-        h('button', { class: 'side-link', title: 'إخفاء القائمة (تظهر من زر القائمة فوق)', onclick: () => {
+        h('button', { class: 'side-link', title: 'إخفاء القائمة (تظهر من زر القائمة في الأعلى)', onclick: () => {
           shell.classList.add('collapsed'); store.set('erp-side-collapsed', true);
         } }, icon('collapse'), h('span', { class: 'txt' }, 'إخفاء القائمة')))),
     h('div', { class: 'side-scrim', onclick: () => shell.classList.remove('side-open') }),
@@ -112,7 +114,7 @@ function renderShell() {
           if (window.innerWidth <= 900) shell.classList.toggle('side-open');
           else { shell.classList.toggle('collapsed'); store.set('erp-side-collapsed', shell.classList.contains('collapsed')); }
         } }, icon('menu')),
-        h('a', { class: 'top-brand', href: '#/' }, h('span', { class: 'logo' }, 'م'), h('span', { class: 'txt' }, CONFIG.APP_NAME)),
+        h('a', { class: 'top-brand', href: '#/' }, logoEl(), h('span', { class: 'txt' }, CONFIG.APP_NAME)),
         h('button', { class: 'search-btn', onclick: openPalette }, icon('search'), h('span', { class: 'txt' }, 'بحث أو انتقال سريع…'), h('kbd', {}, 'Ctrl K')),
         topTitle = h('span', { class: 'spacer' }),
         picker, themeBtn, userBtn),
@@ -125,16 +127,16 @@ function renderShell() {
   if (p.is_admin) { securityAlert(p); setTimeout(dailyIntegrity, 4000); }
 }
 
-// تنبيه المدير: أي تغيير في المستخدمين أو الأدوار أو الصلاحيات أو الإعدادات عمله حد غيره (أو من غير مستخدم) من آخر مرة شافه
+// تنبيه المدير: أي تغيير في المستخدمين أو الأدوار أو الصلاحيات أو الإعدادات أجراه شخص غيره (أو جرى بلا مستخدم) منذ آخر مرة اطّلع فيها
 const SEC_TABLES = ['app_users', 'user_companies', 'user_projects', 'user_permission_overrides', 'user_sensitive_overrides', 'roles', 'role_permissions', 'role_sensitive', 'settings'].map((t) => 'core.' + t);
-const SELF_ONLY = ['last_login_at', 'must_change_password'];  // دخول المستخدم وتغيير كلمة سره بنفسه مش تغيير صلاحيات
+const SELF_ONLY = ['last_login_at', 'must_change_password'];  // دخول المستخدم وتغييره كلمة مروره بنفسه ليسا تغييرًا في الصلاحيات
 const SEC_NAMES = { 'core.app_users': 'المستخدمين', 'core.user_companies': 'شركات المستخدمين', 'core.user_projects': 'مشاريع المستخدمين', 'core.user_permission_overrides': 'استثناءات الصلاحيات',
   'core.user_sensitive_overrides': 'استثناءات البيانات الحساسة', 'core.roles': 'الأدوار', 'core.role_permissions': 'صلاحيات الأدوار', 'core.role_sensitive': 'البيانات الحساسة للأدوار', 'core.settings': 'الإعدادات' };
 async function securityAlert(p) {
   try {
     const key = 'erp-sec-seen-' + p.id;
     const since = store.get(key, null);
-    if (!since) { store.set(key, new Date().toISOString()); return; }  // أول مرة على الجهاز ده: نبدأ المتابعة من دلوقتي
+    if (!since) { store.set(key, new Date().toISOString()); return; }  // أول مرة على هذا الجهاز: تبدأ المتابعة من الآن
     const { data } = await core.from('audit_log').select('id, at, table_name, action, user_id, record_id, new_data')
       .in('table_name', SEC_TABLES).gt('at', since).or(`user_id.is.null,user_id.neq.${p.id}`).order('at', { ascending: false }).limit(50);
     const rows = (data || []).filter((r) => !(r.table_name === 'core.app_users' && r.action === 'update' && r.record_id === r.user_id
@@ -143,14 +145,14 @@ async function securityAlert(p) {
     const by = {}; rows.forEach((r) => { by[r.table_name] = (by[r.table_name] || 0) + 1; });
     const m = modal({ title: '⚠ تغييرات في الصلاحيات', size: 'narrow' });
     m.body.append(
-      h('p', { style: { marginTop: 0 } }, 'فيه تغييرات في الصلاحيات أو المستخدمين ما اتعملتش من حسابك:'),
+      h('p', { style: { marginTop: 0 } }, 'توجد تغييرات في الصلاحيات أو المستخدمين لم تُجرَ من حسابك:'),
       h('ul', {}, Object.entries(by).map(([t, n]) => h('li', {}, `${SEC_NAMES[t] || t}: ${n} تغيير`))),
-      h('p', { class: 'help' }, 'لو مش أنت اللي عملتها من أداة تانية، راجعها فورًا وغيّر كلمة السر.'));
+      h('p', { class: 'help' }, 'إن لم تكن أنت من أجراها من أداة أخرى، فراجعها فورًا وغيّر كلمة المرور.'));
     const seen = () => store.set(key, new Date().toISOString());
     m.foot.append(
       h('button', { class: 'btn primary', onclick: () => { seen(); m.close(); location.hash = '#/admin/audit'; } }, 'افتح سجل المراجعة'),
-      h('button', { class: 'btn', onclick: () => { seen(); m.close(); } }, 'تمام، شفتها'));
-  } catch { /* التنبيه مش أساسي */ }
+      h('button', { class: 'btn', onclick: () => { seen(); m.close(); } }, 'اطّلعت عليها'));
+  } catch { /* التنبيه ليس أساسيًا */ }
 }
 
 let menuEl = null;
@@ -166,21 +168,21 @@ function toggleMenu() {
       onclick: () => { setTheme({ accent: k }); redraw(); } }))),
     h('button', { onclick: () => { toggleMenu(); openBackdropSettings(); } }, 'خلفية الرئيسية: ' + (SCENES[getBackdrop().scene]?.name || 'بدون حركة')),
     h('div', { class: 'sec' }, 'الحساب'),
-    h('button', { onclick: () => { toggleMenu(); openChangePassword(); } }, 'تغيير كلمة السر'),
+    h('button', { onclick: () => { toggleMenu(); openChangePassword(); } }, 'تغيير كلمة المرور'),
     h('button', { onclick: () => { toggleMenu(); openMfa(); } }, 'التحقق بخطوتين'),
-    p.is_admin ? h('button', { onclick: () => { toggleMenu(); runBackup(); }, title: lastBackup() ? 'آخر نسخة: ' + lastBackup().toLocaleString('ar-EG') : 'لم تُعمل نسخة من هذا الجهاز' }, 'نسخة احتياطية الآن') : null,
-    h('button', { onclick: async () => { toggleMenu(); if (await askBackupBeforeLogout()) sb.auth.signOut(); } }, 'تسجيل خروج'));
+    p.is_admin ? h('button', { onclick: () => { toggleMenu(); runBackup(); }, title: lastBackup() ? 'آخر نسخة: ' + lastBackup().toLocaleString('ar-EG') : 'لم تُنشأ نسخة من هذا الجهاز' }, 'نسخة احتياطية الآن') : null,
+    h('button', { onclick: async () => { toggleMenu(); if (await askBackupBeforeLogout()) sb.auth.signOut(); } }, 'تسجيل الخروج'));
   document.body.append(menuEl);
 }
 document.addEventListener('click', () => { if (menuEl) { menuEl.remove(); menuEl = null; } });
 
-// اختيار خلفية الرئيسية: التغيير يظهر فورًا (لو الرئيسية مفتوحة ورا النافذة)
+// اختيار خلفية الرئيسية: يظهر التغيير فورًا (إذا كانت الرئيسية مفتوحة خلف النافذة)
 function openBackdropSettings() {
   const m = modal({ title: 'خلفية الصفحة الرئيسية' });
   const draw = () => {
     const b = getBackdrop();
     m.body.replaceChildren(
-      h('p', { class: 'help', style: { marginTop: 0 } }, 'الحركة في الصفحة الرئيسية بس، وبتقف لوحدها لما التبويب مش ظاهر. الاختيار محفوظ على الجهاز ده.'),
+      h('p', { class: 'help', style: { marginTop: 0 } }, 'الحركة في الصفحة الرئيسية فقط، وتتوقف تلقائيًا عند إخفاء التبويب. الاختيار محفوظ على هذا الجهاز.'),
       h('div', { class: 'bd-list' }, [['none', { name: 'بدون حركة', desc: 'خلفية ثابتة' }], ...Object.entries(SCENES)].map(([k, sc]) =>
         h('button', { class: 'bd-opt' + (b.scene === k ? ' on' : ''), onclick: () => { setBackdrop({ scene: k }); draw(); } },
           h('b', {}, sc.name), h('small', {}, sc.desc)))),
@@ -192,7 +194,7 @@ function openBackdropSettings() {
 }
 
 function openChangePassword() {
-  const m = modal({ title: 'تغيير كلمة السر', size: 'narrow' });
+  const m = modal({ title: 'تغيير كلمة المرور', size: 'narrow' });
   m.body.append(changePasswordForm({ forced: false, onDone: m.close, onCancel: m.close }));
 }
 
@@ -303,7 +305,9 @@ function renderHome() {
   if (state.can('accounting', 2)) quick.push({ t: 'قيد جديد', href: '#/accounting/journal', main: true, ic: 'ledger' });
   if (state.can('accounting', 1)) quick.push({ t: 'كشف حساب', href: '#/accounting/statement' }, { t: 'ميزان المراجعة', href: '#/accounting/trial-balance' }, { t: 'الإقرار الضريبي', href: '#/accounting/vat' });
 
+  const ann = activeAnnouncement();
   main.replaceChildren(...[
+    ann ? h('div', { class: 'notice announce ' + (ann.level || 'info') }, '📢 ', ann.text) : null,
     h('section', { class: 'home-hero' },
       h('div', {},
         h('h1', { class: 'hello' }, (hour < 12 ? 'صباح الخير' : 'مساء الخير') + '، ', h('b', {}, p.full_name.split(' ')[0])),

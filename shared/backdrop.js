@@ -1,10 +1,11 @@
-// خلفية الصفحة الرئيسية المتحركة. الاختيار محفوظ لكل مستخدم في متصفحه (زي الثيم).
-//   تشتغل في الرئيسية بس، وتقف لوحدها لما التبويب مش ظاهر أو الجهاز مفعّل عليه "تقليل الحركة".
+// خلفية الصفحة الرئيسية المتحركة. الاختيار محفوظ لكل مستخدم في متصفحه (مثل الثيم).
+//   تعمل في الصفحة الرئيسية فقط، وتتوقف تلقائيًا عند إخفاء التبويب أو عند تفعيل «تقليل الحركة» في الجهاز.
 //   إضافة خلفية جديدة = إضافة عنصر في SCENES بـ { name, desc, init(s, env), draw(s, env, t), trail? }
 import { store } from './ui.js';
+import { CONFIG } from '../config.js';
 
 const KEY = 'erp-backdrop';
-export const POWERS = [['0.6', 'هادية'], ['1', 'متوسطة'], ['1.6', 'قوية']];
+export const POWERS = [['0.6', 'هادئة'], ['1', 'متوسطة'], ['1.6', 'قوية']];
 
 export function getBackdrop() {
   const v = store.get(KEY, null) || {};
@@ -26,7 +27,7 @@ const A = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a))}
 
 export const SCENES = {
   rain: {
-    name: 'مطر الأرقام', desc: 'أعمدة أرقام وأكواد حسابات بتنزل زي شاشات الأنظمة', trail: true,
+    name: 'مطر الأرقام', desc: 'أعمدة من الأرقام وأكواد الحسابات تتساقط مثل شاشات الأنظمة', trail: true,
     init(s, e) { s.fs = 16; s.drops = Array.from({ length: Math.ceil(e.W / (s.fs * 1.1)) }, () => ({ y: R() * -e.H, v: 1.2 + R() * 2.4 })); },
     draw(s, e) {
       const { ctx, AC, P } = e;
@@ -44,7 +45,7 @@ export const SCENES = {
     },
   },
   wave: {
-    name: 'موجة جزيئات 3D', desc: 'سطح نقاط بيتموّج في عمق ثلاثي الأبعاد، والماوس بيعمل فيه موجات',
+    name: 'موجة جزيئات 3D', desc: 'سطح من النقاط يتموّج في عمق ثلاثي الأبعاد، ويُحدث الماوس فيه موجات',
     init(s, e) { s.n = Math.round(46 * Math.min(1.4, e.P)); s.m = Math.round(26 * Math.min(1.4, e.P)); s.rip = []; },
     draw(s, e, t) {
       const { ctx, W, H, AC, INK } = e; const sec = t / 1000, cx = W * 0.5, cy = H * 0.62, fov = 520;
@@ -61,7 +62,7 @@ export const SCENES = {
     },
   },
   blueprint: {
-    name: 'مخطط هيكل حديد', desc: 'لوحة هندسية بتترسم عليها جمالونات وهياكل وكمرات بأطوالها',
+    name: 'مخطط هيكل حديد', desc: 'لوحة هندسية تُرسم عليها جمالونات وهياكل وكمرات بأطوالها',
     init(s) { s.items = []; s.next = 0; },
     draw(s, e, t) {
       const { ctx, W, H, INK } = e, g = 32;
@@ -73,7 +74,7 @@ export const SCENES = {
     },
   },
   orbit: {
-    name: 'الشركات الثلاث', desc: 'عيون وريان والقيادة بيلفّوا حوالين النظام الموحد وبيانات بتجري بينهم',
+    name: 'الشركات الثلاث', desc: 'عيون وريان والقيادة تدور حول النظام، والبيانات تجري بينها',
     init(s, e) { s.parts = []; s.names = e.companies.length ? e.companies : ['عيون الحديد', 'ريان القرني', 'القيادة الذكية']; },
     draw(s, e, t) {
       const { ctx, W, H, AC, INK } = e; const sec = t / 1000, cx = W * 0.38, cy = H * 0.62, R0 = Math.min(W, H) * 0.3;
@@ -95,7 +96,7 @@ export const SCENES = {
       const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 90 * pulse); rg.addColorStop(0, A(AC, 0.45)); rg.addColorStop(1, A(AC, 0));
       ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(cx, cy, 90 * pulse, 0, 6.29); ctx.fill();
       ctx.fillStyle = A(AC, 1); ctx.beginPath(); ctx.arc(cx, cy, 9, 0, 6.29); ctx.fill();
-      ctx.font = `700 15px ${e.font}`; ctx.textAlign = 'center'; ctx.fillStyle = A(INK, 0.8); ctx.fillText('النظام الموحد', cx, cy + 32);
+      ctx.font = `700 15px ${e.font}`; ctx.textAlign = 'center'; ctx.fillStyle = A(INK, 0.8); ctx.fillText(CONFIG.APP_NAME, cx, cy + 32);
       for (const hb of hubs) {
         const rg2 = ctx.createRadialGradient(hb.x, hb.y, 0, hb.x, hb.y, 40); rg2.addColorStop(0, A(AC, 0.3)); rg2.addColorStop(1, A(AC, 0));
         ctx.fillStyle = rg2; ctx.beginPath(); ctx.arc(hb.x, hb.y, 40, 0, 6.29); ctx.fill();
@@ -105,7 +106,7 @@ export const SCENES = {
     },
   },
   charts: {
-    name: 'رسوم بيانية حية', desc: 'خطوط إيرادات وتكاليف بتتحرك باستمرار ومعاها مبالغ بالريال',
+    name: 'رسوم بيانية حية', desc: 'خطوط إيرادات وتكاليف تتحرك باستمرار ومعها مبالغ بالريال',
     init(s, e) { s.lines = [0, 1, 2].map((i) => ({ ph: R() * 100, amp: 50 + i * 25, base: e.H * (0.42 + i * 0.17) })); },
     draw(s, e, t) {
       const { ctx, W, H, AC, INK, P } = e; const sec = t / 1000 * P;
@@ -127,7 +128,7 @@ export const SCENES = {
     },
   },
   warp: {
-    name: 'عبور النجوم', desc: 'نجوم وأرقام جاية ناحيتك من العمق، والاتجاه بيميل مع الماوس', trail: true,
+    name: 'عبور النجوم', desc: 'نجوم وأرقام قادمة نحوك من العمق، ويميل اتجاهها مع الماوس', trail: true,
     init(s, e) { s.s = Array.from({ length: Math.round(800 * e.P) }, () => ({ x: (R() - 0.5) * e.W * 2, y: (R() - 0.5) * e.H * 2, z: R() * 1000, t: R() < 0.12 ? AR[(R() * 10) | 0] : null })); },
     draw(s, e) {
       const { ctx, W, H, AC, INK, P } = e;
@@ -142,7 +143,7 @@ export const SCENES = {
     },
   },
   glyphs: {
-    name: 'رموز متدفقة', desc: 'رموز محاسبية وبرمجية بتطفو بأحجام وعمق مختلف وبتنور حوالين الماوس',
+    name: 'رموز متدفقة', desc: 'رموز محاسبية وبرمجية تطفو بأحجام وأعماق مختلفة وتضيء حول الماوس',
     init(s, e) { s.g = Array.from({ length: Math.round(e.W * e.H / 9000 * e.P) }, () => ({ x: R() * e.W, y: R() * e.H, z: 0.3 + R() * 1.3, t: CODES[(R() * CODES.length) | 0], r: (R() - 0.5) * 0.5, ph: R() * 6.28 })); },
     draw(s, e, t) {
       const { ctx, AC, INK, P } = e;
@@ -160,7 +161,7 @@ export const SCENES = {
     },
   },
   hex: {
-    name: 'خلايا سداسية', desc: 'شبكة خلايا بتنور موجات موجات وحوالين الماوس',
+    name: 'خلايا سداسية', desc: 'شبكة خلايا تضيء في موجات متتابعة وحول الماوس',
     init() {},
     draw(s, e, t) {
       const { ctx, W, H, AC, INK } = e, r = 26, w = r * Math.sqrt(3), sec = t / 1000 * e.P;
@@ -211,7 +212,7 @@ function drawStruct(it, e, t) {
 }
 
 // ---------------------------------------------------------------------
-// تركيب الخلفية في عنصر (الرئيسية). يرجّع دالة الإيقاف.
+// تركيب الخلفية في عنصر (الرئيسية). تُرجع دالة الإيقاف.
 //   opts.companies: أسماء الشركات (لخلفية "الشركات الثلاث")
 export function mountBackdrop(host, opts = {}) {
   const cv = document.createElement('canvas');

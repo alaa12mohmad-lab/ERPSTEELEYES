@@ -5,7 +5,7 @@ import { state } from '../../shared/state.js';
 import { combo } from '../../shared/combo.js';
 
 const cache = new Map();
-// أي حفظ أو تعديل أو إلغاء أو حذف قيد → الأرصدة في القوائم تتحدّث في الفتح الجاي
+// أي حفظ أو تعديل أو إلغاء أو حذف لقيد ← تتحدّث الأرصدة في القوائم عند فتحها التالي
 const MUTATE = new Set(['post_batch', 'edit_entry', 'cancel_entry', 'delete_entry', 'reverse_entry', 'approve_proposed']);
 rpcListeners.add((fn) => { if (MUTATE.has(fn)) for (const lk of cache.values()) lk.staleBalances?.(); });
 
@@ -52,8 +52,8 @@ export async function loadLookups(company, { force = false } = {}) {
 }
 
 // ---------------------------------------------------------------------
-// الأرصدة جنب الأسماء في القوائم: رصيد الحساب من أول السنة لليوم، ورصيد الطرف/الموظف.
-//   تتحمّل عند أول فتح لقائمة وتتجدد لو عدّى عليها أكتر من دقيقة
+// الأرصدة بجانب الأسماء في القوائم: رصيد الحساب من أول السنة حتى اليوم، ورصيد الطرف/الموظف.
+//   تُحمَّل عند أول فتح لقائمة، وتتجدد إذا مرّت عليها أكثر من دقيقة
 // ---------------------------------------------------------------------
 const money = (n) => Math.abs(n).toLocaleString('en', { maximumFractionDigits: 2 });
 function attachBalances(lk) {
@@ -75,7 +75,7 @@ function attachBalances(lk) {
     return bal.loading;
   };
   lk.staleBalances = () => { bal.at = 0; };
-  // النص الجانبي: "130,000 د" أو "15,000 م" (فاضي لو صفر أو مش متحمّل)
+  // النص الجانبي: «130,000 مدين» أو «15,000 دائن» (فارغ إذا كان صفرًا أو لم يُحمَّل بعد)
   lk.balText = (o) => {
     if (!bal.at || !o) return '';
     const v = o.combo || o.kind === 'موظف' || (o.row && 'is_customer' in o.row) ? bal.party.get(o.party || o.id) : bal.acc.get(o.id);
@@ -151,7 +151,7 @@ function buildPartyCombos(lk) {
     return id;
   };
   lk.isPartyAccount = (account) => partyAccount(lk.postable.find((a) => a.id === account) || lk.accounts.find((a) => a.id === account));
-  // طرف جديد اتضاف: يدخل كل القوائم المفتوحة فورًا
+  // طرف جديد أُضيف: يدخل كل القوائم المفتوحة فورًا
   lk.addParty = (r) => {
     const o = { id: r.id, code: r.code, name: r.name, label: `${r.code} — ${r.name}`, row: r, kind: r.is_customer && r.is_supplier ? 'عميل ومورد' : r.is_customer ? 'عميل' : 'مورد' };
     const ins = (arr) => arr.splice(arr[arr.length - 1] === NEW_PARTY ? arr.length - 1 : arr.length, 0, o);
@@ -170,11 +170,11 @@ function buildPartyCombos(lk) {
   };
 }
 
-// (توافق مع الكود القديم: القوائم بقت عائمة ومش محتاجة datalist)
+// (للتوافق مع الكود القديم: أصبحت القوائم عائمة ولا تحتاج إلى datalist)
 export function ensureDatalist() { return ''; }
 
 // حقل اختيار بالبحث: يقبل الكود أو الاسم. القائمة العائمة في shared/combo.js
-//   meta(o): نص جانبي (الرصيد)، onOpen(): يتنادى عند فتح القائمة (تحميل الأرصدة)
+//   meta(o): نص جانبي (الرصيد)، onOpen(): يُستدعى عند فتح القائمة (لتحميل الأرصدة)
 export function picker(opts) { return combo(opts); }
 
 // اختيار شركة واحدة داخل شاشة المحاسبة

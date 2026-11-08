@@ -3,6 +3,7 @@ import { core, errMsg, insertRows, updateRow, rpc, callFn } from '../../shared/s
 import { h, modal, toast, fmt, LEVELS, confirmDialog } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { renderMaster, opts } from '../../shared/master.js';
+import { renderSystem } from './system.js';
 
 async function fetchAll() {
   const [roles, modules, sensitive, projects, employees] = await Promise.all([
@@ -40,9 +41,9 @@ async function renderUsers(el) {
   const card = h('div', { class: 'card' },
     h('div', { class: 'toolbar' }, h('div', { class: 'grow' }), h('button', { class: 'btn primary', onclick: () => openUser(null) }, '+ مستخدم جديد')),
     h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
-      h('thead', {}, h('tr', {}, ['الاسم', 'الإيميل', 'الدور', 'الشركات', 'المشاريع', 'آخر دخول', 'الحالة'].map((t) => h('th', {}, t)))), tbody)));
+      h('thead', {}, h('tr', {}, ['الاسم', 'البريد الإلكتروني', 'الدور', 'الشركات', 'المشاريع', 'آخر دخول', 'الحالة'].map((t) => h('th', {}, t)))), tbody)));
   el.replaceChildren(h('p', { class: 'notice', style: { marginBottom: '14px' } },
-    'الحساب يُنشأ مفعّلًا فورًا بالإيميل وكلمة السر التي تحددها، ولا يُرسل أي إيميل. المستخدم يغيّر كلمة السر أول مرة يدخل.'), card);
+    'الحساب يُنشأ مفعّلًا فورًا بالبريد الإلكتروني وكلمة المرور التي تحددها، ولا تُرسل أي رسالة بريد. يغيّر المستخدم كلمة المرور عند أول دخول.'), card);
 
   async function load() {
     const { data, error } = await core.from('v_users').select('*').order('created_at');
@@ -55,7 +56,7 @@ async function renderUsers(el) {
       h('td', {}, u.all_projects || u.is_admin ? 'كل مشاريع شركاته' : `${u.project_ids.length} مشروع`),
       h('td', {}, fmt.datetime(u.last_login_at) || '—'),
       h('td', {}, u.is_active ? h('span', { class: 'badge ok' }, 'نشط') : h('span', { class: 'badge bad' }, 'موقوف'),
-        u.must_change_password && h('span', { class: 'badge warn', style: { marginInlineStart: '6px' } }, 'لم يغيّر كلمة السر')))));
+        u.must_change_password && h('span', { class: 'badge warn', style: { marginInlineStart: '6px' } }, 'لم يغيّر كلمة المرور')))));
   }
 
   function scopeFields(u) {
@@ -101,9 +102,9 @@ async function renderUsers(el) {
     const scope = scopeFields(u);
     m.body.append(h('div', { class: 'form-grid' },
       h('div', { class: 'field' }, h('label', { for: 'u_name' }, 'الاسم', h('span', { class: 'req' }, '*')), name),
-      h('div', { class: 'field' }, h('label', { for: 'u_email' }, 'الإيميل (اسم الدخول)', h('span', { class: 'req' }, '*')), email,
-        isNew && h('div', { class: 'help' }, 'لا يلزم أن يكون إيميلًا حقيقيًا — النظام لا يرسل له شيئًا')),
-      isNew && h('div', { class: 'field' }, h('label', { for: 'u_pass' }, 'كلمة السر المبدئية'), pass,
+      h('div', { class: 'field' }, h('label', { for: 'u_email' }, 'البريد الإلكتروني (اسم الدخول)', h('span', { class: 'req' }, '*')), email,
+        isNew && h('div', { class: 'help' }, 'لا يلزم أن يكون بريدًا إلكترونيًا حقيقيًا — النظام لا يرسل له شيئًا')),
+      isNew && h('div', { class: 'field' }, h('label', { for: 'u_pass' }, 'كلمة المرور المبدئية'), pass,
         h('div', { class: 'help' }, 'أعطها للموظف؛ سيطلب منه تغييرها أول دخول')),
       h('div', { class: 'field' }, h('label', { for: 'u_role' }, 'الدور'), role),
       h('div', { class: 'field' }, h('label', { for: 'u_emp' }, 'الموظف المرتبط'), emp),
@@ -111,7 +112,7 @@ async function renderUsers(el) {
       u?.is_admin ? h('div', { class: 'field wide' }, h('div', { class: 'notice' }, 'مدير النظام يرى ويدير كل شيء.')) : scope.ui));
 
     const save = async () => {
-      if (!name.value.trim() || !email.value.trim()) { toast('الاسم والإيميل مطلوبان', 'bad'); return; }
+      if (!name.value.trim() || !email.value.trim()) { toast('الاسم والبريد الإلكتروني مطلوبان', 'bad'); return; }
       const sc = scope.read();
       btn.disabled = true;
       try {
@@ -135,7 +136,7 @@ async function renderUsers(el) {
     m.foot.append(btn);
     if (!isNew) {
       m.foot.append(h('button', { class: 'btn', onclick: () => openOverrides(u) }, 'استثناءات الصلاحيات'));
-      m.foot.append(h('button', { class: 'btn', onclick: () => resetPassword(u) }, 'تعيين كلمة سر'));
+      m.foot.append(h('button', { class: 'btn', onclick: () => resetPassword(u) }, 'تعيين كلمة مرور'));
       m.foot.append(h('span', { class: 'spacer' }));
       if (u.id !== state.profile.id) {
         m.foot.append(h('button', { class: 'btn ' + (u.is_active ? 'danger' : ''), onclick: async () => {
@@ -147,12 +148,12 @@ async function renderUsers(el) {
   }
 
   function resetPassword(u) {
-    const m = modal({ title: `كلمة سر جديدة — ${u.full_name}`, size: 'narrow' });
+    const m = modal({ title: `كلمة مرور جديدة — ${u.full_name}`, size: 'narrow' });
     const p = h('input', { class: 'input ltr', value: genPassword(), id: 'rp' });
-    m.body.append(h('div', { class: 'field' }, h('label', { for: 'rp' }, 'كلمة السر الجديدة'), p,
+    m.body.append(h('div', { class: 'field' }, h('label', { for: 'rp' }, 'كلمة المرور الجديدة'), p,
       h('div', { class: 'help' }, 'أعطها للموظف؛ سيطلب منه تغييرها عند الدخول')));
     m.foot.append(h('button', { class: 'btn primary', onclick: async () => {
-      try { await callFn('admin-users', { action: 'set_password', user_id: u.id, password: p.value }); toast('تم تعيين كلمة السر', 'ok'); m.close(); load(); } catch (e) { toast(e.message, 'bad'); }
+      try { await callFn('admin-users', { action: 'set_password', user_id: u.id, password: p.value }); toast('تم تعيين كلمة المرور', 'ok'); m.close(); load(); } catch (e) { toast(e.message, 'bad'); }
     } }, 'حفظ'), h('button', { class: 'btn', onclick: m.close }, 'رجوع'));
   }
 
@@ -314,11 +315,12 @@ export default {
   code: 'admin',
   title: 'المستخدمون والصلاحيات',
   tabs: [
+    { path: 'system', title: 'هوية النظام وإعداداته', render: renderSystem },
     { path: 'users', title: 'المستخدمون', render: renderUsers },
     { path: 'roles', title: 'الأدوار والصلاحيات', render: renderRoles },
     { path: 'modules', title: 'الأقسام', render: renderModules },
     {
-      path: 'settings', title: 'الإعدادات',
+      path: 'settings', title: 'الإعدادات المتقدمة',
       render: (el) => renderMaster(el, {
         title: 'الإعداد', titleKey: 'key', table: 'settings', module: 'admin', companyField: 'company_id', companyNullable: true,
         order: [{ col: 'key' }],

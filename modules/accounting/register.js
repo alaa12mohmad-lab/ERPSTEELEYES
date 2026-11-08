@@ -60,12 +60,12 @@ export async function openEntry(id, { onChange } = {}) {
   m.foot.append(h('button', { class: 'btn', onclick: () => printEntries([{ entry: e, lines: lines || [] }], users || []) }, 'طباعة'));
   if (state.can('accounting', 4) && !e.reversed_by_no) {
     m.foot.append(h('button', { class: 'btn danger', title: 'حذف نهائي — يبقى في سجل القيود المحذوفة', onclick: async () => {
-      const note = 'الحذف نهائي: القيد يختفي من الصفحات والتقارير، ونسخة كاملة منه تُحفظ في "القيود المحذوفة". لو كان آخر قيد في السنة يرجع رقمه للقيد التالي، وإلا يفضل رقمه فاضي.';
+      const note = 'الحذف نهائي: يختفي القيد من الصفحات والتقارير، وتُحفظ نسخة كاملة منه في «القيود المحذوفة». إذا كان آخر قيد في السنة يعود رقمه للقيد التالي، وإلا يبقى رقمه شاغرًا.';
       const r = await askReason(`حذف القيد ${e.fiscal_year}-${e.entry_no}`, { ok: 'حذف نهائي', note });
       if (!r) return;
       try {
         const res = await rpc('delete_entry', { p_entry: e.id, p_reason: r }, 'accounting');
-        toast(`حُذف القيد ${res.fiscal_year}-${res.entry_no}` + (res.number_reused ? ' — رقمه رجع للقيد التالي' : ''), 'ok'); done();
+        toast(`حُذف القيد ${res.fiscal_year}-${res.entry_no}` + (res.number_reused ? ' — وعاد رقمه للقيد التالي' : ''), 'ok'); done();
       } catch (err) { toast(err.message, 'bad'); }
     } }, 'حذف القيد'));
   }
@@ -78,7 +78,7 @@ export async function openEntry(id, { onChange } = {}) {
     }
     if (!e.reversed_by_no) {
       m.foot.append(h('button', { class: 'btn danger', onclick: async () => {
-        const msg = e.entry_type === 'reversal' ? 'إلغاء القيد العكسي يرجّع القيد الأصلي غير معكوس.' : 'القيد يبقى برقمه بحالة "ملغي" ولا يدخل في أي رصيد أو تقرير.';
+        const msg = e.entry_type === 'reversal' ? 'إلغاء القيد العكسي يعيد القيد الأصلي غير معكوس.' : 'يبقى القيد برقمه بحالة «ملغي» ولا يدخل في أي رصيد أو تقرير.';
         const r = await askReason('سبب إلغاء القيد', { ok: 'إلغاء القيد', note: msg });
         if (!r) return;
         try { await rpc('cancel_entry', { p_entry: e.id, p_reason: r }, 'accounting'); toast(`أُلغي القيد ${e.fiscal_year}-${e.entry_no}`, 'ok'); done(); } catch (err) { toast(err.message, 'bad'); }
@@ -230,7 +230,7 @@ export function renderDeleted(el) {
       h('td', { class: 'ltr' }, `${d.fiscal_year}-${d.entry_no}`), h('td', {}, fmt.date(d.entry_date)), h('td', {}, state.companyName(d.company_id)),
       h('td', { style: { whiteSpace: 'normal', maxWidth: '320px' } }, d.description), h('td', { class: 'num' }, fmt.num(d.total)),
       h('td', { style: { whiteSpace: 'normal', maxWidth: '260px' } }, d.reason), h('td', {}, name(d.created_by)), h('td', {}, fmt.datetime(d.created_at)),
-      h('td', {}, d.number_reused ? h('span', { class: 'badge accent', title: 'كان آخر قيد فرقمه رجع للقيد التالي' }, 'أُعيد استخدامه') : h('span', { class: 'badge' }, 'فاضي'))))
+      h('td', {}, d.number_reused ? h('span', { class: 'badge accent', title: 'كان آخر قيد فعاد رقمه للقيد التالي' }, 'أُعيد استخدامه') : h('span', { class: 'badge' }, 'شاغر'))))
       : [h('tr', {}, h('td', { colspan: 9, class: 'empty' }, 'لا توجد قيود محذوفة'))]));
     count.textContent = `${data.length} قيد محذوف`;
   }
@@ -260,7 +260,7 @@ export function renderProposed(el) {
     h('option', { value: 'pending' }, 'بانتظار الاعتماد'), h('option', { value: 'approved' }, 'المعتمدة'), h('option', { value: 'rejected' }, 'المرفوضة'));
   const tbody = h('tbody');
   el.replaceChildren(
-    h('p', { class: 'notice', style: { marginBottom: '12px' } }, 'القيود اللي بتيجي من فواتير المبيعات والأقسام التانية (الرواتب، المعدات، العهد…) بتستنى هنا، وما بتأثرش على أي رصيد لحد ما تعتمدها.'),
+    h('p', { class: 'notice', style: { marginBottom: '12px' } }, 'القيود الواردة من فواتير المبيعات والأقسام الأخرى (الرواتب، المعدات، العهد…) تنتظر هنا، ولا تؤثر على أي رصيد حتى تعتمدها.'),
     h('div', { class: 'card' }, h('div', { class: 'toolbar' }, stateSel),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
         h('thead', {}, h('tr', {}, ['التاريخ', 'الشركة', 'المصدر', 'المرجع', 'البيان', 'المبلغ', 'الحالة'].map((t) => h('th', {}, t)))), tbody))));

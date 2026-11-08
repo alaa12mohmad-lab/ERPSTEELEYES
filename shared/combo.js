@@ -1,8 +1,8 @@
-// قائمة اختيار بالبحث (بديل datalist): قائمة عائمة تحت الخانة، مجموعات، تمييز الجزء المكتوب، آخر اختيارات، رصيد جنب الاسم.
-//   الكتابة زي Excel: دخول الخانة يحدد النص كله فأي حرف يستبدله، Delete يفضّي الخانة، Esc يرجّع القيمة القديمة.
+// قائمة اختيار بالبحث (بديل datalist): قائمة عائمة تحت الخانة، مجموعات، تمييز الجزء المكتوب، آخر اختيارات، الرصيد بجانب الاسم.
+//   الكتابة مثل Excel: دخول الخانة يحدد النص كله فيستبدله أي حرف، وDelete يُفرغ الخانة، وEsc يعيد القيمة السابقة.
 //   الخيار: { id, code, name, label, group?, kind?, special?, combo? }
 //   combo({ options, listKey, value, placeholder, cls, onChange(o), onSpecial(o), meta(o) → نص جانبي, onOpen(), disabled })
-//   يرجّع { el (الخانة نفسها), id, set(id), resolve(), setOptions(list, key), setDisabled(b), refresh() }
+//   يُرجع { el (الخانة نفسها), id, set(id), resolve(), setOptions(list, key), setDisabled(b), refresh() }
 import { h } from './ui.js';
 
 // تطبيع العربي للبحث: أ/إ/آ ← ا، ة ← ه، ى ← ي، ؤ ← و، ئ ← ي، بدون تشكيل أو تطويل، والأرقام الهندية ← عربية
@@ -18,15 +18,15 @@ const RECENT_MAX = 6;
 const recentKey = (k) => 'erp-recent-' + k;
 function recentGet(k) { try { return JSON.parse(localStorage.getItem(recentKey(k)) || '[]'); } catch { return []; } }
 function recentPush(k, id) {
-  try { localStorage.setItem(recentKey(k), JSON.stringify([id, ...recentGet(k).filter((x) => x !== id)].slice(0, RECENT_MAX))); } catch { /* التخزين مقفول */ }
+  try { localStorage.setItem(recentKey(k), JSON.stringify([id, ...recentGet(k).filter((x) => x !== id)].slice(0, RECENT_MAX))); } catch { /* التخزين غير متاح */ }
 }
 
-// لوحة واحدة مشتركة لكل الخانات (واحدة مفتوحة في كل مرة)
+// لوحة واحدة مشتركة لكل الخانات (تُفتح واحدة فقط في كل مرة)
 let panel = null; let owner = null;
 function getPanel() {
   if (!panel) {
     panel = h('div', { class: 'combo-panel', role: 'listbox' });
-    panel.addEventListener('mousedown', (e) => e.preventDefault()); // الضغط على القائمة ما يشيلش التركيز من الخانة
+    panel.addEventListener('mousedown', (e) => e.preventDefault()); // الضغط على القائمة لا يُفقد الخانة التركيز
     document.body.append(panel);
     const reposition = () => owner?.place();
     window.addEventListener('resize', reposition);
@@ -61,7 +61,7 @@ export function combo({ options, listKey = 'x', value = null, placeholder = '', 
     input.dataset.id = id || '';
   };
 
-  // البحث: كل كلمات النص لازم تظهر في الكود أو الاسم. الترتيب: الكود بالظبط ← الكود يبدأ بـ ← الاسم يبدأ بـ ← الباقي
+  // البحث: يجب أن تظهر كل كلمات النص في الكود أو الاسم. الترتيب: الكود مطابقًا ← الكود يبدأ بـ ← الاسم يبدأ بـ ← الباقي
   function search(q) {
     const nq = norm(q);
     const real = opts.filter((o) => !o.special);
@@ -101,8 +101,8 @@ export function combo({ options, listKey = 'x', value = null, placeholder = '', 
           : [h('span', { class: 'ci-code' }, ...mark(o.code, query)), h('span', { class: 'ci-name' }, ...mark(o.comboName || o.name, query)),
             side ? h('span', { class: 'ci-meta' }, side) : null, o.kind ? h('span', { class: 'ci-kind' }, o.kind) : null]));
     });
-    if (!list.length) kids.unshift(h('div', { class: 'combo-empty' }, query ? 'لا يوجد نتائج لـ "' + query + '"' : 'لا توجد عناصر'));
-    else if (list.length > LIMIT) kids.splice(kids.length - specials.length - (specials.length ? 1 : 0), 0, h('div', { class: 'combo-more' }, `و${list.length - LIMIT} كمان — اكتب أكتر عشان تضيّق البحث`));
+    if (!list.length) kids.unshift(h('div', { class: 'combo-empty' }, query ? 'لا توجد نتائج لـ "' + query + '"' : 'لا توجد عناصر'));
+    else if (list.length > LIMIT) kids.splice(kids.length - specials.length - (specials.length ? 1 : 0), 0, h('div', { class: 'combo-more' }, `و${list.length - LIMIT} أخرى — اكتب المزيد لتضييق البحث`));
     p.replaceChildren(...kids);
     paintActive();
   }
@@ -146,7 +146,7 @@ export function combo({ options, listKey = 'x', value = null, placeholder = '', 
     if (o.special) { const prev = id; set(prev); onSpecial?.(o, query); return; }
     commit(o);
   }
-  // لما يسيب الخانة من غير ما يختار من القائمة: النص لازم يطابق عنصر واحد
+  // عند مغادرة الخانة دون الاختيار من القائمة: يجب أن يطابق النص عنصرًا واحدًا
   function resolve() {
     const t = input.value.trim();
     if (t === committed) return;
@@ -183,7 +183,7 @@ export function combo({ options, listKey = 'x', value = null, placeholder = '', 
     }
   });
   input.addEventListener('blur', () => { close(); resolve(); });
-  // حدث change الأصلي للمتصفح: نحلّ النص، ولو ما اتغيرش شيء نمنعه عشان ما يتكررش
+  // حدث change الأصلي للمتصفح: نحلّ النص، وإذا لم يتغير شيء نمنعه حتى لا يتكرر
   input.addEventListener('change', (e) => { if (e.isTrusted) { e.stopImmediatePropagation(); resolve(); } });
 
   set(value);

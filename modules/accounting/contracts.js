@@ -1,5 +1,5 @@
 // عقود المشاريع والمستخلصات: عقود العملاء ومقاولي الباطن، الدفعة المقدمة واستردادها، المحتجزات وفكها.
-//   كل مستخلص بيعمل قيده لوحده (accounting.post_contract_bill) — إلغاء القيد من سجل القيود = إلغاء المستخلص
+//   مستخلصات مقاولي الباطن تُنشئ قيدها مباشرة (accounting.post_contract_bill)، وإلغاء القيد من سجل القيود = إلغاء المستخلص
 import { acc, rpc } from '../../shared/sb.js';
 import { h, fmt, modal, toast, confirmDialog } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
@@ -18,7 +18,7 @@ const pct = (a, b) => (Number(b) ? Math.round((Number(a) / Number(b)) * 1000) / 
 export function renderContracts(el) {
   const kindSel = h('select', { class: 'input', style: { width: 'auto' } },
     h('option', { value: '' }, 'كل العقود وأوامر الشراء'), h('option', { value: 'customer' }, 'عقود العملاء'), h('option', { value: 'po' }, 'أوامر الشراء من العملاء'),
-    h('option', { value: 'subcontract' }, 'مقاولو الباطن'), h('option', { value: 'over' }, 'محتاجة تعديل (متجاوزة)'));
+    h('option', { value: 'subcontract' }, 'مقاولو الباطن'), h('option', { value: 'over' }, 'تحتاج إلى تعديل (متجاوزة)'));
   const viewSel = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: 'list' }, 'عرض العقود'), h('option', { value: 'project' }, 'ملخص حسب المشروع'));
   viewSel.onchange = () => load();
   const out = h('div');
@@ -32,27 +32,27 @@ export function renderContracts(el) {
     if (kindSel.value === 'over') rows = rows.filter((r) => Number(r.over_amount) > 0);
     else if (kindSel.value) rows = rows.filter((r) => r.kind === kindSel.value);
     rows = rows.filter((r) => r.status === 'active' || r.bills > 0);
-    if (!rows.length) { out.replaceChildren(h('div', { class: 'notice' }, kindSel.value === 'over' ? 'مفيش أوامر شراء متجاوزة.' : 'مفيش عقود. اضغط "عقد / أمر شراء" وسجّل عقد المشروع أو أمر الشراء من العميل أو عقد مقاول الباطن.')); return; }
+    if (!rows.length) { out.replaceChildren(h('div', { class: 'notice' }, kindSel.value === 'over' ? 'لا توجد أوامر شراء متجاوزة.' : 'لا توجد عقود. اضغط «عقد / أمر شراء» وسجّل عقد المشروع أو أمر الشراء من العميل أو عقد مقاول الباطن.')); return; }
     if (viewSel.value === 'project') { out.replaceChildren(projectSummary(rows)); return; }
     const tot = (k, kind) => rows.filter((r) => (kind === 'customer' ? isCust(r.kind) : r.kind === kind)).reduce((s, r) => s + Number(r[k]), 0);
     const overN = rows.filter((r) => Number(r.over_amount) > 0).length;
     out.replaceChildren(
       h('div', { class: 'kpis' },
-        h('div', { class: 'kpi' }, h('small', {}, 'باقي على العملاء (عقود وأوامر شراء)'), h('b', {}, fmt.num(tot('outstanding', 'customer'))),
-          overN ? h('span', { class: 'bad' }, `${overN} أمر شراء محتاج تعديل`) : null),
-        h('div', { class: 'kpi' }, h('small', {}, 'محتجزات لينا عند العملاء'), h('b', {}, fmt.num(tot('retention_held', 'customer')))),
-        h('div', { class: 'kpi' }, h('small', {}, 'باقي لمقاولي الباطن'), h('b', {}, fmt.num(tot('outstanding', 'subcontract')))),
+        h('div', { class: 'kpi' }, h('small', {}, 'المتبقي على العملاء (عقود وأوامر شراء)'), h('b', {}, fmt.num(tot('outstanding', 'customer'))),
+          overN ? h('span', { class: 'bad' }, `${overN} أمر شراء يحتاج إلى تعديل`) : null),
+        h('div', { class: 'kpi' }, h('small', {}, 'محتجزات لنا لدى العملاء'), h('b', {}, fmt.num(tot('retention_held', 'customer')))),
+        h('div', { class: 'kpi' }, h('small', {}, 'المتبقي لمقاولي الباطن'), h('b', {}, fmt.num(tot('outstanding', 'subcontract')))),
         h('div', { class: 'kpi' }, h('small', {}, 'محتجزات علينا لمقاولي الباطن'), h('b', {}, fmt.num(tot('retention_held', 'subcontract'))))),
       h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'grid report contracts' },
-        h('thead', {}, h('tr', {}, ['العقد', 'النوع', 'المشروع', 'الطرف', 'القيمة الحالية', 'المنفّذ / المتفوتر', 'الدفعة المقدمة (المسترد)', 'المحتجز', 'المتفوتر', 'المحصّل/المدفوع', 'الباقي'].map((t) => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['العقد', 'النوع', 'المشروع', 'الطرف', 'القيمة الحالية', 'المنفّذ / المفوتر', 'الدفعة المقدمة (المسترد)', 'المحتجز', 'المفوتر', 'المحصّل/المدفوع', 'الباقي'].map((t) => h('th', {}, t)))),
         h('tbody', {}, rows.map((r) => h('tr', { onclick: () => contractView(r.contract_id, load), class: r.status !== 'active' ? 'dim' : '' },
           h('td', {}, h('b', { class: 'ltr' }, r.contract_no), r.title ? h('div', { class: 'help' }, r.title) : null, ids().length > 1 ? h('div', { class: 'help' }, cname(r.company_id)) : null),
           h('td', {}, h('span', { class: 'badge' + (r.kind === 'subcontract' ? ' warn' : '') }, KIND[r.kind])),
           h('td', {}, `${r.project_code} — ${r.project_name}`), h('td', {}, r.party_name),
-          h('td', { class: 'num' }, N(r.current_value), Number(r.amendments) ? h('div', { class: 'help' }, `أصلي ${fmt.num(r.contract_value)} ${Number(r.amendments) > 0 ? '+' : '−'} ${fmt.num(Math.abs(r.amendments))}`) : null),
+          h('td', { class: 'num' }, N(r.current_value), Number(r.amendments) ? h('div', { class: 'help' }, `الأصلية ${fmt.num(r.contract_value)} ${Number(r.amendments) > 0 ? '+' : '−'} ${fmt.num(Math.abs(r.amendments))}`) : null),
           h('td', { class: 'num' }, N(r.work_done), h('div', { class: 'pbar' + (Number(r.over_amount) > 0 ? ' over' : '') }, h('i', { style: { width: Math.min(100, pct(r.work_done, r.current_value)) + '%' } })),
             h('small', { class: 'help' }, pct(r.work_done, r.current_value) + '%'),
-            Number(r.over_amount) > 0 ? h('div', {}, h('span', { class: 'badge bad', title: 'الفواتير عدّت قيمة أمر الشراء — محتاج تعديل من العميل' }, `متجاوز ${fmt.num(r.over_amount)}`)) : null),
+            Number(r.over_amount) > 0 ? h('div', {}, h('span', { class: 'badge bad', title: 'تجاوزت الفواتير قيمة أمر الشراء — يحتاج إلى تعديل من العميل' }, `متجاوز ${fmt.num(r.over_amount)}`)) : null),
           h('td', { class: 'num' }, Number(r.advance_billed) ? `${fmt.num(r.advance_billed)} (${fmt.num(r.advance_recovered)})` : ''),
           h('td', { class: 'num' }, Number(r.retention_held) ? N(r.retention_held) : ''),
           h('td', { class: 'num' }, N(r.billed_total)), h('td', { class: 'num' }, N(r.collected)), h('td', { class: 'num' }, h('b', {}, N(r.outstanding))))))))));
@@ -75,7 +75,7 @@ async function contractView(id, done) {
     const s = st.find((x) => x.contract_id === id);
     m.setTitle?.(`${KIND[c.kind]} ${c.contract_no}`);
     const lvl2 = state.can('accounting', 2) && c.status === 'active';
-    // عقود العملاء وأوامر الشراء: الفاتورة بتتعمل من صفحة فواتير المبيعات وبتعدّي على الاعتماد. مقاول الباطن: مستخلص مباشر
+    // عقود العملاء وأوامر الشراء: تُنشأ الفاتورة من صفحة فواتير المبيعات وتمر بالاعتماد. مقاول الباطن: مستخلص مباشر
     const bill = (kind) => (isCust(c.kind) ? salesEditor({ company_id: c.company_id, contract_id: c.id, bill_kind: kind, onDone: draw }) : billDialog(c, kind, s, draw));
     const [{ data: amends }, { data: pend }] = await Promise.all([
       acc.from('contract_amendments').select('*').eq('contract_id', id).eq('status', 'active').order('amend_date'),
@@ -86,11 +86,11 @@ async function contractView(id, done) {
       h('div', { class: 'kpis' },
         h('div', { class: 'kpi main' }, h('small', {}, c.kind === 'po' ? 'قيمة أمر الشراء الحالية' : 'قيمة العقد الحالية'), h('b', {}, fmt.num(s.current_value)),
           h('span', {}, `${s.project_code} — ${s.project_name} · ${s.party_name}`), Number(s.amendments) ? h('span', {}, `الأصلية ${fmt.num(c.contract_value)} + تعديلات ${fmt.num(s.amendments)}`) : null),
-        h('div', { class: 'kpi' }, h('small', {}, c.kind === 'po' ? 'المتفوتر' : 'المنفّذ (المستخلصات)'), h('b', {}, fmt.num(s.work_done)),
-          Number(s.over_amount) > 0 ? h('span', { class: 'bad' }, `متجاوز ${fmt.num(s.over_amount)} — محتاج تعديل من العميل`) : h('span', {}, `${pct(s.work_done, s.current_value)}% — الباقي ${fmt.num(s.current_value - s.work_done)}`)),
-        h('div', { class: 'kpi' }, h('small', {}, 'الدفعة المقدمة'), h('b', {}, fmt.num(s.advance_billed)), h('span', {}, `مسترد ${fmt.num(s.advance_recovered)} — باقي ${fmt.num(s.advance_billed - s.advance_recovered)}`)),
-        h('div', { class: 'kpi' }, h('small', {}, `المحتجز (${Number(c.retention_pct)}%)`), h('b', {}, fmt.num(s.retention_held)), h('span', {}, `اتفك ${fmt.num(s.retention_released)}`)),
-        h('div', { class: 'kpi' }, h('small', {}, isCust(c.kind) ? 'المحصّل' : 'المدفوع'), h('b', {}, fmt.num(s.collected)), h('span', {}, `من ${fmt.num(s.billed_total)} — الباقي ${fmt.num(s.outstanding)}`))),
+        h('div', { class: 'kpi' }, h('small', {}, c.kind === 'po' ? 'المفوتر' : 'المنفّذ (المستخلصات)'), h('b', {}, fmt.num(s.work_done)),
+          Number(s.over_amount) > 0 ? h('span', { class: 'bad' }, `متجاوز ${fmt.num(s.over_amount)} — يحتاج إلى تعديل من العميل`) : h('span', {}, `${pct(s.work_done, s.current_value)}% — المتبقي ${fmt.num(s.current_value - s.work_done)}`)),
+        h('div', { class: 'kpi' }, h('small', {}, 'الدفعة المقدمة'), h('b', {}, fmt.num(s.advance_billed)), h('span', {}, `المسترد ${fmt.num(s.advance_recovered)} — المتبقي ${fmt.num(s.advance_billed - s.advance_recovered)}`)),
+        h('div', { class: 'kpi' }, h('small', {}, `المحتجز (${Number(c.retention_pct)}%)`), h('b', {}, fmt.num(s.retention_held)), h('span', {}, `المفكوك ${fmt.num(s.retention_released)}`)),
+        h('div', { class: 'kpi' }, h('small', {}, isCust(c.kind) ? 'المحصّل' : 'المدفوع'), h('b', {}, fmt.num(s.collected)), h('span', {}, `من ${fmt.num(s.billed_total)} — المتبقي ${fmt.num(s.outstanding)}`))),
       lvl2 ? h('div', { class: 'toolbar', style: { margin: '6px 0 12px' } },
         h('button', { class: 'btn primary', onclick: () => bill('progress') }, c.kind === 'po' ? '＋ فاتورة' : '＋ مستخلص'),
         Number(c.advance_amount) > 0 ? h('button', { class: 'btn', disabled: advLeft <= 0, onclick: () => bill('advance') }, 'دفعة مقدمة') : null,
@@ -102,14 +102,14 @@ async function contractView(id, done) {
         h('thead', {}, h('tr', {}, ['النوع', 'رقم', 'التاريخ', 'الفاتورة', 'قيمة الأعمال/المبلغ', 'استرداد الدفعة', 'المحتجز', 'الخاضع', 'الضريبة', 'الصافي', 'القيد'].map((t) => h('th', {}, t)))),
         h('tbody', {}, bills.length ? bills.map((b) => h('tr', { class: b.entry_status !== 'active' ? 'cancelled' : '' },
           h('td', {}, BILL[b.kind], b.entry_status !== 'active' ? h('span', { class: 'badge bad', style: { marginInlineStart: '6px' } }, 'ملغي') : null,
-            b.entry_version > 1 ? h('span', { class: 'badge warn', title: 'القيد اتعدّل بعد إصداره — أرقام المستخلص هنا ممكن تختلف عنه', style: { marginInlineStart: '6px' } }, 'القيد معدّل') : null),
+            b.entry_version > 1 ? h('span', { class: 'badge warn', title: 'عُدّل القيد بعد إصداره — قد تختلف أرقام المستخلص هنا عنه', style: { marginInlineStart: '6px' } }, 'القيد معدّل') : null),
           h('td', { class: 'num' }, b.bill_no), h('td', {}, fmt.date(b.bill_date)), h('td', { class: 'ltr' }, b.invoice_no),
           h('td', { class: 'num' }, N(b.work_amount)), h('td', { class: 'num' }, Number(b.recovery) ? N(b.recovery) : ''), h('td', { class: 'num' }, Number(b.retention) ? N(b.retention) : ''),
           h('td', { class: 'num' }, Number(b.vat_base) ? N(b.vat_base) : ''), h('td', { class: 'num' }, Number(b.vat_amount) ? N(b.vat_amount) : ''),
           h('td', { class: 'num' }, h('b', {}, N(b.net_amount))),
           h('td', {}, h('a', { href: 'javascript:void 0', onclick: () => openEntry(b.entry_id, { onChange: draw }) }, b.entry_ref))))
-          : h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'لسه مفيش مستخلصات')))))),
-      pend?.length ? h('div', { class: 'section-title' }, 'فواتير لسه ما اتعتمدتش (ما بتنقّصش العقد لحد الاعتماد)') : null,
+          : h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'لا توجد مستخلصات بعد')))))),
+      pend?.length ? h('div', { class: 'section-title' }, 'فواتير لم تُعتمد بعد (لا تُنقص العقد حتى اعتمادها)') : null,
       pend?.length ? h('div', { class: 'card' }, h('table', { class: 'grid report' },
         h('thead', {}, h('tr', {}, ['الفاتورة', 'التاريخ', 'النوع', 'الصافي', 'الحالة'].map((t) => h('th', {}, t)))),
         h('tbody', {}, pend.map((p) => h('tr', { onclick: () => salesEditor({ id: p.id, onDone: draw }) },
@@ -128,8 +128,8 @@ async function contractView(id, done) {
             if (error) toast(error.message, 'bad'); else draw();
           } }, 'إلغاء') : null)))))) : null,
       h('p', { class: 'help' }, isCust(c.kind)
-        ? 'الفواتير والمستخلصات بتتعمل من فواتير المبيعات وبتعدّي على الاعتماد. لإلغاء فاتورة معتمدة: افتح قيدها وألغيه، أو اعمل إشعار دائن. الضريبة على قيمة الأعمال بعد خصم الدفعة المقدمة المستردة، والمحتجز ما بيقلّلش الضريبة.'
-        : 'لإلغاء مستخلص: افتح قيده وألغيه — بيخرج من حسابات العقد.'));
+        ? 'تُنشأ الفواتير والمستخلصات من فواتير المبيعات وتمر بالاعتماد. لإلغاء فاتورة معتمدة: افتح قيدها وألغِه، أو أنشئ إشعارًا دائنًا. الضريبة على قيمة الأعمال بعد خصم الدفعة المقدمة المستردة، والمحتجز لا يُنقص الضريبة.'
+        : 'لإلغاء مستخلص: افتح قيده وألغِه — فيخرج من حسابات العقد.'));
   };
   m.foot.append(h('button', { class: 'btn', onclick: () => { m.close(); done(); } }, 'إغلاق'));
   await draw();
@@ -148,9 +148,9 @@ async function billDialog(c, kind, s, done) {
   const amt = h('input', { class: 'input', type: 'number', step: '0.01', value: amtDefault || '' });
   const rec = h('input', { class: 'input', type: 'number', step: '0.01', placeholder: 'تلقائي' });
   const ret = h('input', { class: 'input', type: 'number', step: '0.01', placeholder: 'تلقائي' });
-  const notes = h('input', { class: 'input', placeholder: 'مثلًا: أعمال شهر فبراير' });
+  const notes = h('input', { class: 'input', placeholder: 'مثل: أعمال شهر فبراير' });
   const prev = h('div');
-  const label = { advance: 'مبلغ الدفعة المقدمة (قبل الضريبة)', progress: 'قيمة الأعمال المنفذة في المستخلص ده (قبل الضريبة)', release: 'المحتجز المفكوك' }[kind];
+  const label = { advance: 'مبلغ الدفعة المقدمة (قبل الضريبة)', progress: 'قيمة الأعمال المنفذة في هذا المستخلص (قبل الضريبة)', release: 'المحتجز المفكوك' }[kind];
   m.body.append(h('div', { class: 'form-grid' },
     h('div', { class: 'field' }, h('label', {}, 'التاريخ'), date),
     h('div', { class: 'field' }, h('label', {}, 'رقم الفاتورة'), inv),
@@ -172,7 +172,7 @@ async function billDialog(c, kind, s, done) {
           kind === 'progress' ? h('div', { class: 'kpi' }, h('small', {}, 'استرداد / محتجز'), h('b', {}, `${fmt.num(r.recovery)} / ${fmt.num(r.retention)}`)) : null,
           h('div', { class: 'kpi' }, h('small', {}, 'الخاضع / الضريبة'), h('b', {}, `${fmt.num(r.vat_base)} / ${fmt.num(r.vat)}`)),
           h('div', { class: 'kpi main' }, h('small', {}, isCust(c.kind) ? 'الصافي على العميل' : 'الصافي للمقاول'), h('b', {}, fmt.num(r.net)))),
-        h('div', { class: 'help', style: { margin: '6px 0' } }, 'القيد اللي هيتعمل:'),
+        h('div', { class: 'help', style: { margin: '6px 0' } }, 'القيد الذي سيُنشأ:'),
         h('table', { class: 'grid report' }, h('thead', {}, h('tr', {}, ['الحساب', 'مدين', 'دائن', 'بيان'].map((x) => h('th', {}, x)))),
           h('tbody', {}, r.lines.map((l) => h('tr', {}, h('td', {}, accName(l.account_id)), h('td', { class: 'num' }, Number(l.debit) ? N(l.debit) : ''),
             h('td', { class: 'num' }, Number(l.credit) ? N(l.credit) : ''), h('td', { class: 'help' }, l.description || (l.invoice_no ? 'فاتورة ' + l.invoice_no : ''))))),
@@ -247,15 +247,15 @@ async function contractForm(c, done) {
     F('الشركة', coSel, { req: true }), F('النوع', kind, { req: true }),
     F('رقم العقد / أمر الشراء', no, { req: true }), F('الاسم / الوصف', title),
     F('المشروع', slots.project, { req: true }), F('العميل / المقاول', slots.party, { req: true }),
-    F('القيمة الأصلية (قبل الضريبة)', value, { req: true, help: 'الزيادات بعد كده بتتسجل كأمر تغيير / تعديل أمر شراء' }), F('نسبة المحتجز %', retPct, { help: 'بتتخصم من كل مستخلص (غالبًا 5% أو 10%)' }),
-    F('الدفعة المقدمة (قبل الضريبة)', adv, { help: 'صفر لو مفيش' }), F('نسبة استرداد الدفعة %', recPct, { help: 'بتتخصم من كل مستخلص لحد ما الدفعة تخلص' }),
-    F('تاريخ البداية', start), F('تاريخ النهاية', end, { help: 'ميعاد فك المحتجز المتوقع في السيولة' })),
+    F('القيمة الأصلية (قبل الضريبة)', value, { req: true, help: 'تُسجَّل الزيادات اللاحقة كأمر تغيير / تعديل أمر شراء' }), F('نسبة المحتجز %', retPct, { help: 'تُخصم من كل مستخلص (غالبًا 5% أو 10%)' }),
+    F('الدفعة المقدمة (قبل الضريبة)', adv, { help: 'صفر إن لم توجد' }), F('نسبة استرداد الدفعة %', recPct, { help: 'تُخصم من كل مستخلص حتى تنتهي الدفعة' }),
+    F('تاريخ البداية', start), F('تاريخ النهاية', end, { help: 'الموعد المتوقع لفك المحتجز في السيولة' })),
   h('div', { class: 'section-title' }, 'الحسابات'),
   h('div', { class: 'form-grid' },
     F('حساب العميل / المقاول', slots.party_account, { req: true }), F(kind.value !== 'subcontract' ? 'حساب الإيراد' : 'حساب الإيراد / التكلفة', slots.main, { req: true }),
     F('حساب المحتجزات', slots.retention, { help: 'محتجزات لدى العملاء (أصل) أو محتجزات مقاولي الباطن (التزام)' }),
     F('حساب الدفعات المقدمة', slots.advance, { help: 'دفعات مقدمة من العملاء (التزام) أو لمقاولي الباطن (أصل)' }),
-    F('حساب الضريبة', slots.vat, { help: 'فاضي = العقد من غير ضريبة (مثلًا مقاول بدون رقم ضريبي)' }), F('ملاحظات', notes, { wide: true })), err);
+    F('حساب الضريبة', slots.vat, { help: 'فارغ = عقد بدون ضريبة (مثل مقاول بلا رقم ضريبي)' }), F('ملاحظات', notes, { wide: true })), err);
   await build();
   const save = h('button', { class: 'btn primary', onclick: async () => {
     err.style.display = 'none';
@@ -274,12 +274,12 @@ async function contractForm(c, done) {
     const q = c ? acc.from('contracts').update(row).eq('id', c.id) : acc.from('contracts').insert(row);
     const { error } = await q;
     save.disabled = false;
-    if (error) { err.textContent = /contracts_no_uq/.test(error.message) ? 'رقم العقد مستخدم قبل كده في الشركة دي' : error.message; err.style.display = ''; return; }
-    toast(c ? 'اتعدّل العقد' : 'اتسجل العقد', 'ok'); m.close(); done();
+    if (error) { err.textContent = /contracts_no_uq/.test(error.message) ? 'رقم العقد مستخدم سابقًا في هذه الشركة' : error.message; err.style.display = ''; return; }
+    toast(c ? 'عُدّل العقد' : 'سُجّل العقد', 'ok'); m.close(); done();
   } }, 'حفظ');
   m.foot.append(...[save,
     c && state.can('accounting', 3) ? h('button', { class: 'btn ghost', onclick: async () => {
-      if (!(await confirmDialog(`إيقاف العقد ${c.contract_no}؟ المستخلصات اللي اتعملت بتفضل زي ما هي.`))) return;
+      if (!(await confirmDialog(`إيقاف العقد ${c.contract_no}؟ تبقى المستخلصات المُصدرة كما هي.`))) return;
       const { error } = await acc.from('contracts').update({ status: c.status === 'active' ? 'archived' : 'active' }).eq('id', c.id);
       if (error) toast(error.message, 'bad'); else { m.close(); done(); }
     } }, c.status === 'active' ? 'إيقاف العقد' : 'إعادة التفعيل') : null,
@@ -299,16 +299,16 @@ function amendDialog(c, done) {
     h('div', { class: 'field wide' }, h('label', {}, 'ملاحظات'), notes)), err);
   m.foot.append(h('button', { class: 'btn primary', onclick: async () => {
     err.style.display = 'none';
-    if (!Number(amt.value) || !no.value.trim() || !date.value) { err.textContent = 'الرقم والتاريخ والمبلغ مطلوبين'; err.style.display = ''; return; }
+    if (!Number(amt.value) || !no.value.trim() || !date.value) { err.textContent = 'الرقم والتاريخ والمبلغ مطلوبة'; err.style.display = ''; return; }
     const { error } = await acc.from('contract_amendments').insert({ contract_id: c.id, company_id: c.company_id, amend_no: no.value.trim(), amend_date: date.value,
       amount: Number(amt.value), notes: notes.value.trim() || null });
     if (error) { err.textContent = error.message; err.style.display = ''; return; }
-    toast('اتسجل التعديل', 'ok'); m.close(); done();
+    toast('سُجّل التعديل', 'ok'); m.close(); done();
   } }, 'حفظ'), h('button', { class: 'btn', onclick: m.close }, 'رجوع'));
   setTimeout(() => amt.focus(), 0);
 }
 
-// ملخص حسب المشروع: عقود العملاء وأوامر الشراء ← المتفوتر ← المحصّل ← الباقي
+// ملخص حسب المشروع: عقود العملاء وأوامر الشراء ← المفوتر ← المحصّل ← الباقي
 function projectSummary(rows) {
   const by = new Map();
   rows.filter((r) => isCust(r.kind)).forEach((r) => {
@@ -319,10 +319,10 @@ function projectSummary(rows) {
     x.outstanding += Number(r.outstanding); x.retention += Number(r.retention_held); x.over += Number(r.over_amount);
   });
   const list = [...by.values()].sort((a, b) => String(a.code).localeCompare(String(b.code)));
-  if (!list.length) return h('div', { class: 'notice' }, 'مفيش عقود عملاء أو أوامر شراء.');
+  if (!list.length) return h('div', { class: 'notice' }, 'لا توجد عقود عملاء أو أوامر شراء.');
   const T = (k) => list.reduce((s, x) => s + x[k], 0);
   return h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
-    h('thead', {}, h('tr', {}, ['المشروع', 'عدد العقود/الأوامر', 'القيمة الحالية', 'المنفّذ/المتفوتر (قبل الضريبة)', 'باقي من القيمة', 'المتفوتر بالضريبة', 'المحصّل', 'الباقي على العميل', 'المحتجز', 'المتجاوز'].map((t) => h('th', {}, t)))),
+    h('thead', {}, h('tr', {}, ['المشروع', 'عدد العقود/الأوامر', 'القيمة الحالية', 'المنفّذ/المفوتر (قبل الضريبة)', 'المتبقي من القيمة', 'المفوتر بالضريبة', 'المحصّل', 'المتبقي على العميل', 'المحتجز', 'المتجاوز'].map((t) => h('th', {}, t)))),
     h('tbody', {}, list.map((x) => h('tr', {}, h('td', {}, `${x.code} — ${x.name}`), h('td', { class: 'num' }, x.n), h('td', { class: 'num' }, N(x.value)),
       h('td', { class: 'num' }, N(x.work), h('small', { class: 'help' }, ` ${pct(x.work, x.value)}%`)), h('td', { class: 'num' }, N(Math.max(0, x.value - x.work))),
       h('td', { class: 'num' }, N(x.billed)), h('td', { class: 'num' }, N(x.collected)), h('td', { class: 'num' }, h('b', {}, N(x.outstanding))),

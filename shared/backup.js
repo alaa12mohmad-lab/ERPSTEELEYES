@@ -1,12 +1,13 @@
 // النسخة الاحتياطية من الشاشة (للمدير): كل جداول النظام في ملف JSON (للاسترجاع) + ملف Excel (للقراءة).
-//   الملفات بتنزل في فولدر التنزيلات. آخر نسخة بتتسجل على الجهاز عشان النظام يفكّرك عند الخروج.
-//   ده مكمّل للنسخة التلقائية اليومية من السيرفر (ops/backup) — مش بديل عنها.
+//   تُنزَّل الملفات في مجلد التنزيلات، ويُسجَّل تاريخ آخر نسخة على الجهاز ليذكّرك النظام عند الخروج.
+//   هذه النسخة مكمّلة للنسخة التلقائية اليومية من الخادم (ops/backup) وليست بديلًا عنها.
 import { db } from './sb.js';
 import { h, modal, toast, store, fmt } from './ui.js';
 import { state } from './state.js';
 import { VERSION } from './version.js';
+import { CONFIG } from '../config.js';
 
-// [schema, table] — بالترتيب اللي الاسترجاع محتاجه (الأساسي قبل اللي معتمد عليه)
+// [schema, table] — بالترتيب الذي يحتاجه الاسترجاع (الجداول الأساسية قبل الجداول المعتمدة عليها)
 export const BACKUP_TABLES = [
   ['core', 'companies'], ['core', 'settings'], ['core', 'doc_sequences'], ['core', 'modules'], ['core', 'roles'], ['core', 'role_permissions'],
   ['core', 'sensitive_items'], ['core', 'role_sensitive'], ['core', 'app_users'], ['core', 'user_companies'], ['core', 'user_projects'],
@@ -27,7 +28,7 @@ async function fetchAll(schema, table, onPage) {
   for (let from = 0; ; from += size) {
     const { data, error } = await db(schema).from(table).select('*').range(from, from + size - 1);
     if (error) {
-      if (/does not exist|schema cache|permission/i.test(error.message)) return null;   // جدول مش موجود في النسخة دي
+      if (/does not exist|schema cache|permission/i.test(error.message)) return null;   // جدول غير موجود في هذا الإصدار
       throw new Error(`${schema}.${table}: ${error.message}`);
     }
     out.push(...data); onPage?.(out.length);
@@ -41,14 +42,14 @@ function download(name, blob) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
-// يفتح نافذة التقدم ويعمل النسخة. يرجّع true لو خلصت
+// يفتح نافذة التقدم وينشئ النسخة. يُرجع true عند اكتمالها
 export function runBackup({ excel = true } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const m = modal({ title: 'نسخة احتياطية', size: 'narrow', onClose: () => resolve(done) });
     const bar = h('div', { class: 'bk-bar' }, h('i'));
     const line = h('div', { class: 'help' }, 'جارٍ التجهيز…');
-    m.body.append(h('p', { style: { marginTop: 0 } }, 'بيتم تحميل كل بيانات النظام. ما تقفلش الصفحة لحد ما الملفات تنزل.'), bar, line);
+    m.body.append(h('p', { style: { marginTop: 0 } }, 'يجري تحميل جميع بيانات النظام. لا تغلق الصفحة حتى تكتمل الملفات.'), bar, line);
     (async () => {
       const stamp = new Date();
       const tag = stamp.toISOString().slice(0, 16).replace(/[:T]/g, '-');
@@ -63,7 +64,7 @@ export function runBackup({ excel = true } = {}) {
           data[`${s}.${t}`] = rows; counts.push([`${s}.${t}`, rows.length]); total += rows.length;
         }
         bar.firstChild.style.width = '100%';
-        const meta = { app: 'النظام الموحد', version: VERSION, created_at: stamp.toISOString(), created_by: state.profile?.email || '', tables: Object.fromEntries(counts) };
+        const meta = { app: CONFIG.APP_NAME, version: VERSION, created_at: stamp.toISOString(), created_by: state.profile?.email || '', tables: Object.fromEntries(counts) };
         download(`erp-backup-${tag}.json`, new Blob([JSON.stringify({ meta, data })], { type: 'application/json' }));
         if (excel && window.XLSX) {
           const wb = window.XLSX.utils.book_new();
@@ -77,7 +78,7 @@ export function runBackup({ excel = true } = {}) {
         }
         store.set(LAST_KEY, stamp.toISOString());
         done = true;
-        line.textContent = `تمت النسخة: ${counts.length} جدول، ${total.toLocaleString('en')} سجل — الملفات في فولدر التنزيلات.`;
+        line.textContent = `اكتملت النسخة: ${counts.length} جدولًا، ${total.toLocaleString('en')} سجلًا — الملفات في مجلد التنزيلات.`;
         m.foot.append(h('button', { class: 'btn primary', onclick: m.close }, 'تم'));
         toast('تمت النسخة الاحتياطية', 'ok');
       } catch (e) {
@@ -89,17 +90,17 @@ export function runBackup({ excel = true } = {}) {
   });
 }
 
-// عند الخروج: لو آخر نسخة أقدم من يوم يسأل (للمدير بس). يرجّع true لو يكمّل الخروج
+// عند الخروج: إذا كانت آخر نسخة أقدم من يوم يسأل المستخدم (للمدير فقط). تُرجع true لمتابعة الخروج
 export function askBackupBeforeLogout() {
   if (!state.profile?.is_admin || !backupDue(24)) return Promise.resolve(true);
   return new Promise((resolve) => {
     let answered = false;
     const l = lastBackup();
     const m = modal({ title: 'نسخة احتياطية قبل الخروج؟', size: 'narrow', onClose: () => { if (!answered) resolve(false); } });
-    m.body.append(h('p', { style: { margin: 0 } }, l ? `آخر نسخة احتياطية من الجهاز ده: ${fmt.datetime(l)}.` : 'مفيش نسخة احتياطية اتعملت من الجهاز ده قبل كده.'),
-      h('p', { class: 'help' }, 'النسخة بتنزل ملف JSON (للاسترجاع) وملف Excel (للقراءة) في فولدر التنزيلات.'));
+    m.body.append(h('p', { style: { margin: 0 } }, l ? `آخر نسخة احتياطية من هذا الجهاز: ${fmt.datetime(l)}.` : 'لم تُنشأ أي نسخة احتياطية من هذا الجهاز من قبل.'),
+      h('p', { class: 'help' }, 'تُنزّل النسخة ملف JSON (للاسترجاع) وملف Excel (للقراءة) في مجلد التنزيلات.'));
     m.foot.append(
-      h('button', { class: 'btn primary', onclick: async () => { answered = true; m.close(); await runBackup(); resolve(true); } }, 'نسخة ثم خروج'),
+      h('button', { class: 'btn primary', onclick: async () => { answered = true; m.close(); await runBackup(); resolve(true); } }, 'نسخ ثم خروج'),
       h('button', { class: 'btn', onclick: () => { answered = true; m.close(); resolve(true); } }, 'خروج بدون نسخة'),
       h('button', { class: 'btn ghost', onclick: () => m.close() }, 'رجوع'));
   });

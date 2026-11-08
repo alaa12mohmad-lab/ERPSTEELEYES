@@ -1,4 +1,4 @@
-// فحص سلامة البيانات: قواعد لازم تكون صح دايمًا. أي رقم غير صفر = حاجة محتاجة مراجعة
+// فحص سلامة البيانات: قواعد يجب أن تكون صحيحة دائمًا. أي رقم غير الصفر يعني وجود ما يحتاج إلى مراجعة
 import { rpc } from '../../shared/sb.js';
 import { h, fmt, toast } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
@@ -20,10 +20,10 @@ export function renderIntegrity(el) {
   const btn = h('button', { class: 'btn primary', onclick: () => run() }, 'افحص الآن');
   el.replaceChildren(
     h('div', { class: 'card', style: { marginBottom: '12px' } },
-      h('div', { class: 'toolbar' }, btn, h('span', { class: 'help' }, 'بيفحص الشركات المختارة فوق. الفحص بيقرأ بس، وما بيغيّرش أي حاجة.')),
+      h('div', { class: 'toolbar' }, btn, h('span', { class: 'help' }, 'يفحص الشركات المختارة في الأعلى. الفحص للقراءة فقط ولا يغيّر أي شيء.')),
       h('p', { class: 'help', style: { margin: '8px 0 0' } },
-        'الأحمر = خطأ في البيانات المفروض ما يحصلش أبدًا (ابعته فورًا). الأصفر = محتاج مراجعة: غالبًا إدخال أو إعداد حساب اتغير بعد الحفظ. ',
-        'الفحص ده بيتشغل كمان مع النسخة الاحتياطية كل ليلة.')),
+        'الأحمر = خطأ في البيانات لا يُفترض أن يحدث أبدًا (أبلغ عنه فورًا). الأصفر = يحتاج إلى مراجعة: غالبًا إدخال أو إعداد حساب تغيّر بعد الحفظ. ',
+        'يعمل هذا الفحص أيضًا مع النسخة الاحتياطية كل ليلة.')),
     out);
 
   async function run() {
@@ -54,19 +54,19 @@ export function renderIntegrity(el) {
               h('ul', { style: { margin: '6px 0', paddingInlineStart: '18px' } }, (r.samples || []).map((s) => h('li', {},
                 s.entry_id ? h('a', { href: 'javascript:void 0', onclick: () => openEntry(s.entry_id, { onChange: run }) }, s.ref || 'فتح القيد') : s.ref ? h('b', {}, s.ref) : null,
                 s.info ? ' — ' + s.info : ''))),
-              r.problems > (r.samples || []).length ? h('div', { class: 'help' }, `وأكتر (الإجمالي ${fmt.num(r.problems).replace('.00', '')})`) : null);
+              r.problems > (r.samples || []).length ? h('div', { class: 'help' }, `والمزيد (الإجمالي ${fmt.num(r.problems).replace('.00', '')})`) : null);
             return h('tr', { style: { cursor: bad ? 'pointer' : 'default' }, onclick: () => { if (bad) det.style.display = det.style.display ? '' : 'none'; } },
               h('td', { style: { width: '32px', textAlign: 'center' } }, bad ? (r.severity === 'error' ? '❌' : '⚠️') : '✓'),
               h('td', {}, h('b', {}, r.title), bad ? det : null),
               h('td', { class: 'num', style: { width: '90px' } }, bad ? h('span', { class: 'badge ' + (r.severity === 'error' ? 'bad' : 'warn') }, String(r.problems)) : ''));
           }))));
       }));
-    if (errs) toast(`الفحص لقى ${errs} خطأ — راجعهم`, 'bad');
+    if (errs) toast(`وجد الفحص ${errs} خطأ — راجعها`, 'bad');
   }
   run();
 }
 
-// للمدير: فحص تلقائي مرة كل يوم عند الدخول (في الخلفية)، ولو فيه أخطاء يظهر تنبيه
+// للمدير: فحص تلقائي مرة يوميًا عند الدخول (في الخلفية)، ويظهر تنبيه إذا وُجدت أخطاء
 export async function dailyIntegrity() {
   try {
     const last = JSON.parse(localStorage.getItem('erp-integrity-last') || 'null');
@@ -74,6 +74,6 @@ export async function dailyIntegrity() {
     const rows = await runIntegrity(state.companies().map((c) => c.id));
     const errs = rows.filter((r) => r.severity === 'error' && r.problems > 0);
     localStorage.setItem('erp-integrity-last', JSON.stringify({ at: Date.now(), errors: errs.length }));
-    if (errs.length) toast(`⚠ فحص سلامة البيانات لقى ${errs.length} خطأ — افتح المحاسبة ← فحص سلامة البيانات`, 'bad');
-  } catch { /* الفحص مش أساسي للدخول */ }
+    if (errs.length) toast(`⚠ وجد فحص سلامة البيانات ${errs.length} خطأ — افتح المحاسبة ← فحص سلامة البيانات`, 'bad');
+  } catch { /* الفحص ليس شرطًا للدخول */ }
 }

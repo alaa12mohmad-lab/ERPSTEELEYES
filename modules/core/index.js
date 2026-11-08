@@ -186,7 +186,7 @@ export default {
       }),
     },
     {
-      path: 'parties', title: 'العملاء والموردون', subtitle: 'كارت واحد لكل طرف مشترك بين الشركات',
+      path: 'parties', title: 'العملاء والموردون', subtitle: 'بطاقة واحدة لكل طرف، مشتركة بين الشركات',
       render: (el) => renderMaster(el, {
         title: 'الطرف', table: 'parties', module: 'core', importable: true,
         columns: [
@@ -206,7 +206,7 @@ export default {
           { key: 'contact_person', label: 'الشخص المسؤول' },
           { key: 'notes', label: 'ملاحظات', type: 'textarea' },
         ],
-        validate: (v) => (!v.is_customer && !v.is_supplier ? 'اختر عميل أو مورد أو الاثنين' : v.tax_number && !/^\d{15}$/.test(v.tax_number) ? 'الرقم الضريبي 15 رقمًا' : null),
+        validate: (v) => (!v.is_customer && !v.is_supplier ? 'حدد: عميل أو مورد أو كلاهما' : v.tax_number && !/^\d{15}$/.test(v.tax_number) ? 'الرقم الضريبي 15 رقمًا' : null),
       }),
     },
     {
@@ -238,7 +238,7 @@ export default {
           { key: 'end_date', label: 'تاريخ النهاية', type: 'date' },
           { key: 'notes', label: 'ملاحظات', type: 'textarea' },
         ],
-        validate: (v) => (v.ownership === 'rented' && !v.supplier_party_id ? 'المعدة المستأجرة تحتاج مورد' : null),
+        validate: (v) => (v.ownership === 'rented' && !v.supplier_party_id ? 'المعدة المستأجرة تحتاج إلى مورد' : null),
         formExtras: (row, box, ctx) => pricesPanel('equipment', row, box, ctx),
       }),
     },
@@ -330,12 +330,14 @@ export default {
       path: 'companies', title: 'الشركات', visible: () => state.profile.is_admin,
       render: (el) => renderMaster(el, {
         title: 'الشركة', table: 'companies', module: 'admin', allowAdd: false, allowStatus: false,
-        columns: [{ key: 'code', label: 'الكود' }, { key: 'name', label: 'الاسم' }, { key: 'cr_number', label: 'السجل التجاري' }, { key: 'vat_number', label: 'الرقم الضريبي' }],
+        columns: [{ key: 'code', label: 'الكود' }, { key: 'name', label: 'الاسم' }, { key: 'cr_number', label: 'السجل التجاري' }, { key: 'vat_number', label: 'الرقم الضريبي' }, { key: 'phone', label: 'الهاتف' }],
         fields: [
           { key: 'code', label: 'الكود', required: true, readonlyOnEdit: true, ltr: true },
           { key: 'name', label: 'الاسم', required: true },
           { key: 'cr_number', label: 'السجل التجاري', ltr: true },
           { key: 'vat_number', label: 'الرقم الضريبي', ltr: true },
+          { key: 'address', label: 'العنوان', help: 'يظهر في ترويسة التقارير المطبوعة' },
+          { key: 'phone', label: 'الهاتف', ltr: true },
         ],
       }),
     },

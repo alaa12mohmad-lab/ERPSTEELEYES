@@ -14,7 +14,7 @@ const companyIds = () => state.selectedCompanies.length ? state.selectedCompanie
 const cname = (id) => state.companyName(id);
 
 // ---------------------------------------------------------------------
-// صفحة السيولة: الرصيد دلوقتي + المتوقع
+// صفحة السيولة: الرصيد الآن + المتوقع
 // ---------------------------------------------------------------------
 export function renderLiquidity(el) {
   const asOf = dateInput(today());
@@ -29,9 +29,9 @@ export function renderLiquidity(el) {
     const forecastBox = h('div');
     out.replaceChildren(...[
       h('div', { class: 'kpis' },
-        h('div', { class: 'kpi main' }, h('small', {}, 'إجمالي النقدية'), h('b', {}, fmt.num(total)), h('span', {}, 'مقابل الأسبوع اللي فات: ', delta(total, sum(rows, 'balance_7d')))),
-        ...byCo.map((g) => h('div', { class: 'kpi' }, h('small', {}, cname(g.id)), h('b', {}, fmt.num(sum(g.rows, 'balance'))), h('span', {}, 'مقابل الشهر اللي فات: ', delta(sum(g.rows, 'balance'), sum(g.rows, 'balance_30d')))))),
-      low.length ? h('div', { class: 'notice bad', style: { margin: '10px 0' } }, 'تحت حد الأمان: ' + low.map((r) => `${r.name} (${cname(r.company_id)}) ${fmt.num(r.balance)} من ${fmt.num(r.min_balance)}`).join('، ')) : null,
+        h('div', { class: 'kpi main' }, h('small', {}, 'إجمالي النقدية'), h('b', {}, fmt.num(total)), h('span', {}, 'مقارنة بالأسبوع الماضي: ', delta(total, sum(rows, 'balance_7d')))),
+        ...byCo.map((g) => h('div', { class: 'kpi' }, h('small', {}, cname(g.id)), h('b', {}, fmt.num(sum(g.rows, 'balance'))), h('span', {}, 'مقارنة بالشهر الماضي: ', delta(sum(g.rows, 'balance'), sum(g.rows, 'balance_30d')))))),
+      low.length ? h('div', { class: 'notice bad', style: { margin: '10px 0' } }, 'أقل من حد الأمان: ' + low.map((r) => `${r.name} (${cname(r.company_id)}) ${fmt.num(r.balance)} من ${fmt.num(r.min_balance)}`).join('، ')) : null,
       h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
         h('thead', {}, h('tr', {}, ['الحساب', 'الرصيد', 'قبل أسبوع', 'التغير', 'قبل شهر', 'التغير', 'حد الأمان'].map((t) => h('th', {}, t)))),
         h('tbody', {}, byCo.flatMap((g) => [
@@ -45,7 +45,7 @@ export function renderLiquidity(el) {
         ].filter(Boolean))),
         h('tfoot', {}, h('tr', {}, h('td', {}, 'الإجمالي'), h('td', { class: 'num' }, N(total)), h('td', { class: 'num' }, N(sum(rows, 'balance_7d'))), h('td', { class: 'num' }, delta(total, sum(rows, 'balance_7d'))),
           h('td', { class: 'num' }, N(sum(rows, 'balance_30d'))), h('td', { class: 'num' }, delta(total, sum(rows, 'balance_30d'))), h('td')))))),
-      h('p', { class: 'help' }, 'حد الأمان يتحدد من شاشة الحساب في شجرة الحسابات (حسابات النقدية).'),
+      h('p', { class: 'help' }, 'يُحدَّد حد الأمان من شاشة الحساب في شجرة الحسابات (حسابات النقدية).'),
       forecastBox].filter(Boolean));
     renderForecast(forecastBox, ids, asOf.value, total);
     return { name: 'السيولة', print: { title: 'السيولة', company: ids.map(cname).join(' + '), period: 'في ' + asOf.value },
@@ -57,7 +57,7 @@ export function renderLiquidity(el) {
 
 // ---------------------------------------------------------------------
 // السيولة المتوقعة: الفواتير المفتوحة بميعاد استحقاقها + الالتزامات الثابتة + الضريبة المستحقة
-//   "ماذا لو": تأجيل أي حركة يتعمل من التفاصيل ويتحسب فورًا (من غير ما يتحفظ)
+//   «ماذا لو»: تأجيل أي حركة يتم من التفاصيل ويُحسب فورًا (دون حفظ)
 // ---------------------------------------------------------------------
 async function collectEvents(ids, from, to) {
   const events = [];
@@ -73,7 +73,7 @@ async function collectEvents(ids, from, to) {
       d = ymd(new Date(y, m, day));
     }
   }
-  // المحتجزات: تتفك في نهاية العقد (داخل من العملاء، خارج لمقاولي الباطن)
+  // المحتجزات: تُفك في نهاية العقد (داخلة من العملاء، وخارجة لمقاولي الباطن)
   try {
     const cs = await rpc('contract_status', { p_companies: ids }, 'accounting');
     for (const k of cs) {
@@ -81,7 +81,7 @@ async function collectEvents(ids, from, to) {
       events.push({ date: k.end_date < from ? from : k.end_date, origDue: k.end_date, overdue: k.end_date < from, company: k.company_id, kind: k.kind !== 'subcontract' ? 'in' : 'out',
         label: `فك محتجز — عقد ${k.contract_no} (${k.party_name})`, amount: k.kind !== 'subcontract' ? Number(k.retention_held) : -Number(k.retention_held) });
     }
-  } catch { /* العقود مش متفعلة (010/011 ما اتشغلتش) */ }
+  } catch { /* العقود غير مفعّلة (لم يُشغَّل 010/011) */ }
   for (const id of ids) {
     const inv = await rpc('open_invoices', { p_company: id, p_as_of: today(), p_party: null }, 'accounting');
     for (const r of inv) {
@@ -91,7 +91,7 @@ async function collectEvents(ids, from, to) {
       events.push({ date: due < from ? from : due, origDue: due, overdue: due < from, company: id, kind: r.side === 'customer' ? 'in' : 'out',
         label: `${r.party_name} — ${r.invoice_no}`, amount: r.side === 'customer' ? rem : -rem, entry: r.entry_id });
     }
-    // الضريبة المستحقة: صافي حسابات الضريبة لحد النهارده، في ميعاد الإقرار
+    // الضريبة المستحقة: صافي حسابات الضريبة حتى اليوم، في موعد الإقرار
     const lk = await loadLookups(id);
     const vatIds = new Set(lk.accounts.filter((a) => a.row.vat_role && a.row.vat_role !== 'none').map((a) => a.id));
     if (vatIds.size) {
@@ -110,12 +110,12 @@ async function collectEvents(ids, from, to) {
 
 function renderForecast(box, ids, asOf, opening) {
   let grain = 'week'; let events = []; const shift = new Map();
-  const grainSel = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: 'week' }, '12 أسبوع'), h('option', { value: 'month' }, '6 شهور'));
+  const grainSel = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: 'week' }, '12 أسبوعًا'), h('option', { value: 'month' }, '6 أشهر'));
   const resetBtn = h('button', { class: 'btn ghost', onclick: () => { shift.clear(); draw(); } }, 'إلغاء التأجيلات');
   const body = h('div', { class: 'empty' }, 'جارٍ حساب المتوقع…');
   box.replaceChildren(h('div', { class: 'card', style: { marginTop: '16px' } },
     h('div', { class: 'toolbar' }, h('strong', {}, 'السيولة المتوقعة'), grainSel, resetBtn, h('div', { class: 'grow' }),
-      h('span', { class: 'help' }, 'من الفواتير المفتوحة بميعاد استحقاقها، والالتزامات الثابتة، والضريبة المستحقة. اضغط على أي فترة لتفاصيلها.')), body));
+      h('span', { class: 'help' }, 'من الفواتير المفتوحة بتواريخ استحقاقها، والالتزامات الثابتة، والضريبة المستحقة. اضغط على أي فترة لعرض تفاصيلها.')), body));
   grainSel.onchange = () => { grain = grainSel.value; load(); };
 
   const periods = () => {
@@ -145,7 +145,7 @@ function renderForecast(box, ids, asOf, opening) {
     });
     const beyond = events.filter((ev, i) => dateOf(ev, i) > ps[ps.length - 1].to).length;
     body.replaceChildren(...[
-      minBal < 0 ? h('div', { class: 'notice bad', style: { margin: '8px 0' } }, `السيولة هتبقى بالسالب في ${minAt.label} (${minAt.from} — ${minAt.to}): ${fmt.num(minBal)}`)
+      minBal < 0 ? h('div', { class: 'notice bad', style: { margin: '8px 0' } }, `ستصبح السيولة سالبة في ${minAt.label} (${minAt.from} — ${minAt.to}): ${fmt.num(minBal)}`)
         : h('div', { class: 'notice', style: { margin: '8px 0' } }, `أقل رصيد متوقع: ${fmt.num(minBal)} في ${minAt.label}`),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid report fc' },
         h('thead', {}, h('tr', {}, ['الفترة', 'من', 'إلى', 'أول الفترة', 'داخل متوقع', 'خارج متوقع', 'آخر الفترة', ''].map((t) => h('th', {}, t)))),
@@ -155,7 +155,7 @@ function renderForecast(box, ids, asOf, opening) {
           h('td', { class: neg(r.close) }, h('b', {}, N(r.close))),
           h('td', {}, r.evs.some((x) => x.ev.overdue && !shift.has(x.i)) ? h('span', { class: 'badge warn' }, 'فيها متأخرات') : '')))))),
       beyond ? h('p', { class: 'help' }, `${beyond} حركة استحقاقها بعد آخر فترة معروضة.`) : null,
-      shift.size ? h('p', { class: 'help', style: { color: 'var(--accent)' } }, `فيه ${shift.size} تأجيل "ماذا لو" — مش محفوظ.`) : null].filter(Boolean));
+      shift.size ? h('p', { class: 'help', style: { color: 'var(--accent)' } }, `يوجد ${shift.size} تأجيل «ماذا لو» — غير محفوظ.`) : null].filter(Boolean));
   }
   function details(r) {
     const m = modal({ title: `${r.p.label}: ${r.p.from} — ${r.p.to}`, size: 'wide' });
@@ -169,7 +169,7 @@ function renderForecast(box, ids, asOf, opening) {
           h('td', {}, cname(x.ev.company)), h('td', {}, kinds[x.ev.kind] + (x.ev.overdue ? ' (متأخر من ' + x.ev.origDue + ')' : '')),
           h('td', { onclick: () => x.ev.entry && openEntry(x.ev.entry) }, x.ev.label), h('td', {}, x.ev.origDue || x.ev.date),
           h('td', { class: x.ev.amount < 0 ? 'num neg' : 'num pos' }, N(x.ev.amount)), h('td', {}, inp));
-      }))) : h('div', { class: 'empty' }, 'مفيش حركات متوقعة في الفترة دي'));
+      }))) : h('div', { class: 'empty' }, 'لا توجد حركات متوقعة في هذه الفترة'));
     m.foot.append(h('button', { class: 'btn primary', onclick: m.close }, 'تم'));
   }
   load();
@@ -195,7 +195,7 @@ export function renderCashFlow(el) {
     const tot = (arr) => arr.reduce((s, x) => s + x, 0);
     const net = tot(rows.map((r) => Number(r.amount)));
     const opening = Number(open);
-    // أي فرق بين (أول المدة + الصافي) وآخر المدة = قيود افتتاحية جوه الفترة
+    // أي فرق بين (أول المدة + الصافي) وآخر المدة = قيود افتتاحية داخل الفترة
     const openingEntries = Number(close) - opening - net;
     const trs = []; const aoa = [['البند', ...months.map(mlabel), 'الإجمالي']];
     for (const [k, name] of CLASSES) {
@@ -219,9 +219,9 @@ export function renderCashFlow(el) {
         h('thead', {}, h('tr', {}, h('th', {}, 'البند'), ...months.map((m) => h('th', {}, mlabel(m))), h('th', {}, 'الإجمالي'))),
         h('tbody', {}, ...trs,
           h('tr', { class: 'fin-subtotal' }, h('td', {}, 'النقدية أول المدة'), h('td', { colspan: months.length }), h('td', { class: 'num' }, N(opening))),
-          Math.abs(openingEntries) > 0.005 ? h('tr', { class: 'fin-account' }, h('td', {}, 'أرصدة افتتاحية مسجلة جوه الفترة'), h('td', { colspan: months.length }), h('td', { class: 'num' }, N(openingEntries))) : null,
+          Math.abs(openingEntries) > 0.005 ? h('tr', { class: 'fin-account' }, h('td', {}, 'أرصدة افتتاحية مسجّلة داخل الفترة'), h('td', { colspan: months.length }), h('td', { class: 'num' }, N(openingEntries))) : null,
           h('tr', { class: 'fin-grand' }, h('td', {}, 'النقدية آخر المدة'), h('td', { colspan: months.length }), h('td', { class: 'num' }, N(close))))))),
-      h('p', { class: 'help' }, 'البند بيتحدد من "بند التدفق" المكتوب على الحساب في الشجرة، وإلا من نوع الحساب. التحويل بين الصندوق والبنك مش بيظهر لأنه مش داخل ولا خارج.'));
+      h('p', { class: 'help' }, 'يُحدَّد البند من «بند التدفق» المكتوب على الحساب في الشجرة، وإلا من نوع الحساب. التحويل بين الصندوق والبنك لا يظهر لأنه ليس داخلًا ولا خارجًا.'));
     aoa.push([], ['النقدية أول المدة', opening], ['النقدية آخر المدة', Number(close)]);
     return { name: 'التدفقات النقدية', print: { company: sel.value ? cname(sel.value) : 'كل الشركات', period: `من ${from.value} إلى ${to.value}`, fit: true, sign: true }, aoa };
   });
@@ -229,9 +229,9 @@ export function renderCashFlow(el) {
 }
 
 // ---------------------------------------------------------------------
-// أعمار الديون: العملاء أو الموردون، مقسومين حسب التأخير عن ميعاد الاستحقاق
+// أعمار الديون: العملاء أو الموردون، مقسّمين حسب التأخر عن تاريخ الاستحقاق
 // ---------------------------------------------------------------------
-const BUCKETS = [['cur', 'غير مستحق'], ['b30', '1 – 30'], ['b60', '31 – 60'], ['b90', '61 – 90'], ['b90p', 'أكتر من 90'], ['un', 'غير موزع']];
+const BUCKETS = [['cur', 'غير مستحق'], ['b30', '1 – 30'], ['b60', '31 – 60'], ['b90', '61 – 90'], ['b90p', 'أكثر من 90'], ['un', 'غير موزّع']];
 export function renderAging(el) {
   const sel = companySelect(() => go());
   const asOf = dateInput(today());
@@ -254,12 +254,12 @@ export function renderAging(el) {
     const col = (k) => list.reduce((s, p) => s + p[k], 0);
     out.replaceChildren(h('div', { class: 'card' },
       h('div', { class: 'toolbar' }, h('strong', {}, `أعمار ${side.value === 'customer' ? 'ديون العملاء' : 'أرصدة الموردين'} — ${cname(sel.value)}`),
-        h('span', { class: 'help' }, 'الاستحقاق = المكتوب على الفاتورة، وإلا تاريخها + مدة سداد الطرف (من شاشة العملاء والموردين). اضغط على الطرف لفواتيره.')),
+        h('span', { class: 'help' }, 'الاستحقاق = المكتوب على الفاتورة، وإلا تاريخها + مدة سداد الطرف (من شاشة العملاء والموردين). اضغط على الطرف لعرض فواتيره.')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid report aging' },
         h('thead', {}, h('tr', {}, h('th', {}, 'الطرف'), ...BUCKETS.map(([, t]) => h('th', {}, t)), h('th', {}, 'الإجمالي'))),
         h('tbody', {}, list.length ? list.map((p) => h('tr', { onclick: () => partyDetails(p) }, h('td', {}, p.name),
           ...BUCKETS.map(([k]) => h('td', { class: (k === 'b90p' || k === 'b90') && p[k] ? 'num neg' : 'num' }, p[k] ? N(p[k]) : '')), h('td', { class: 'num' }, h('b', {}, N(p.total)))))
-          : h('tr', {}, h('td', { colspan: 8, class: 'empty' }, 'مفيش أرصدة مفتوحة'))),
+          : h('tr', {}, h('td', { colspan: 8, class: 'empty' }, 'لا توجد أرصدة مفتوحة'))),
         h('tfoot', {}, h('tr', {}, h('td', {}, 'الإجمالي'), ...BUCKETS.map(([k]) => h('td', { class: 'num' }, N(col(k)))), h('td', { class: 'num' }, N(col('total')))))))));
     return { name: 'أعمار الديون', print: { company: cname(sel.value), period: 'في ' + asOf.value, fit: true },
       aoa: [['الطرف', ...BUCKETS.map(([, t]) => t), 'الإجمالي'], ...list.map((p) => [p.name, ...BUCKETS.map(([k]) => p[k]), p.total])] };
@@ -292,16 +292,16 @@ export function renderCommitments(el) {
       { key: 'direction', label: 'الاتجاه', render: (r) => (r.direction === 'in' ? 'داخل' : 'خارج') },
       { key: 'amount', label: 'المبلغ', num: true },
       { key: 'frequency', label: 'التكرار', render: (r) => (FREQ.find((f) => f[0] === r.frequency) || [])[1] },
-      { key: 'start_date', label: 'أول مرة' }, { key: 'end_date', label: 'لحد' },
+      { key: 'start_date', label: 'أول مرة' }, { key: 'end_date', label: 'حتى' },
     ],
     fields: [
       { key: 'company_id', label: 'الشركة', type: 'select', required: true, options: opts.companies() },
-      { key: 'name', label: 'البيان', required: true, help: 'مثلًا: إيجار المكتب، قسط السيارة، رواتب شهر' },
+      { key: 'name', label: 'البيان', required: true, help: 'مثل: إيجار المكتب، قسط السيارة، رواتب الشهر' },
       { key: 'direction', label: 'الاتجاه', type: 'select', required: true, options: opts.list([['out', 'خارج (مدفوع)'], ['in', 'داخل (متحصّل)']]) },
       { key: 'amount', label: 'المبلغ', type: 'number', required: true },
       { key: 'frequency', label: 'التكرار', type: 'select', required: true, options: opts.list(FREQ) },
-      { key: 'start_date', label: 'أول ميعاد', type: 'date', required: true, help: 'اليوم ده بيتكرر كل شهر/ربع/سنة' },
-      { key: 'end_date', label: 'آخر ميعاد', type: 'date', help: 'فاضي = مستمر' },
+      { key: 'start_date', label: 'أول موعد', type: 'date', required: true, help: 'يتكرر هذا اليوم كل شهر/ربع/سنة' },
+      { key: 'end_date', label: 'آخر موعد', type: 'date', help: 'فارغ = مستمر' },
       { key: 'notes', label: 'ملاحظات', type: 'textarea' },
     ],
   });

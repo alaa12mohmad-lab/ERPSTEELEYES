@@ -1,6 +1,7 @@
 // طباعة القيود: سند قيد لكل قيد (اسم الشركة، الرقم، التاريخ، الأسطر، الإجمالي بالحروف، التوقيعات)
 import { h, fmt } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
+import { brand, companyInfo, printFooter, hijri } from '../../shared/branding.js';
 import { ENTRY_TYPES, TAX_CATEGORIES } from './lookups.js';
 
 // ---------------------------------------------------------------------
@@ -86,10 +87,11 @@ function voucher(entry, lines, users) {
   return h('section', { class: 'pv' + (cancelled ? ' pv-cancelled' : '') },
     cancelled ? h('div', { class: 'pv-stamp' }, 'ملغي') : '',
     h('header', { class: 'pv-head' },
-      h('div', {}, h('div', { class: 'pv-co' }, state.companyName(entry.company_id)), h('div', { class: 'pv-title' }, 'قيد يومية')),
+      h('div', { class: 'rp-brand' }, brand.logo ? h('img', { class: 'rp-logo', src: brand.logo, alt: '' }) : null,
+        h('div', {}, h('div', { class: 'pv-co' }, state.companyName(entry.company_id)), coMeta(entry.company_id), h('div', { class: 'pv-title' }, 'قيد يومية'))),
       h('table', { class: 'pv-meta' }, h('tbody', {},
         h('tr', {}, h('th', {}, 'رقم القيد'), h('td', { class: 'ltr' }, `${entry.fiscal_year}-${entry.entry_no}`)),
-        h('tr', {}, h('th', {}, 'التاريخ'), h('td', {}, fmt.date(entry.entry_date))),
+        h('tr', {}, h('th', {}, 'التاريخ'), h('td', {}, fmt.date(entry.entry_date), brand.hijri ? h('div', { class: 'pv-hijri' }, hijri(entry.entry_date)) : null)),
         h('tr', {}, h('th', {}, 'النوع'), h('td', {}, ENTRY_TYPES[entry.entry_type] + (entry.batch_no ? ` — صفحة ${entry.batch_no}` : ''))),
         entry.version > 1 ? h('tr', {}, h('th', {}, 'النسخة'), h('td', {}, `${entry.version} (معدّل)`)) : '',
         ''))),
@@ -112,12 +114,19 @@ function voucher(entry, lines, users) {
       h('div', {}, h('div', { class: 'pv-sl' }, 'اعتمده'), h('div', {}, ' '), h('div', { class: 'pv-line' }))));
 }
 
+// بيانات الشركة تحت اسمها في الترويسة
+function coMeta(id) {
+  const c = companyInfo(id);
+  const t = c ? [c.cr_number && 'س.ت: ' + c.cr_number, c.vat_number && 'الرقم الضريبي: ' + c.vat_number, c.address].filter(Boolean).join(' — ') : '';
+  return t ? h('div', { class: 'rp-meta' }, t) : null;
+}
+
 // list: [{ entry (صف من v_entries), lines (صفوف v_lines) }]
 export function printEntries(list, users = []) {
   document.getElementById('print-area')?.remove();
   const area = h('div', { id: 'print-area' },
     list.map(({ entry, lines }) => voucher(entry, lines, users)),
-    h('div', { class: 'pv-foot' }, `طُبع ${fmt.datetime(new Date())} — ${state.profile?.full_name || ''}`));
+    h('div', { class: 'pv-foot' }, printFooter(state.profile?.full_name, fmt.datetime)));
   document.body.append(area);
   document.body.classList.add('printing');
   const done = () => { document.body.classList.remove('printing'); area.remove(); window.removeEventListener('afterprint', done); };

@@ -21,8 +21,8 @@ export function errMsg(error) {
     if (/cancel_reason/.test(m)) return 'سبب الإلغاء مطلوب';
     if (/tax/.test(m)) return 'الرقم الضريبي يجب أن يكون 15 رقمًا';
     if (/dates/.test(m)) return 'تاريخ النهاية قبل تاريخ البداية';
-    if (/supplier/.test(m)) return 'المعدة المستأجرة تحتاج مورد';
-    if (/role_chk/.test(m)) return 'الطرف لازم يكون عميل أو مورد أو الاثنين';
+    if (/supplier/.test(m)) return 'المعدة المستأجرة تحتاج إلى مورد';
+    if (/role_chk/.test(m)) return 'يجب أن يكون الطرف عميلًا أو موردًا أو كليهما';
     return 'بيانات غير صحيحة: ' + m;
   }
   if (/Failed to fetch|NetworkError/i.test(m)) return 'تعذر الاتصال بالخادم — تأكد من الإنترنت';
@@ -55,7 +55,7 @@ export async function insertRows(table, rows, schema) {
   return data;
 }
 
-// أي قسم يقدر يسمع لنداءات rpc الناجحة (مثلًا: تحديث الأرصدة المعروضة بعد حفظ قيد)
+// يمكن لأي قسم الاستماع لنداءات rpc الناجحة (مثلًا: تحديث الأرصدة المعروضة بعد حفظ قيد)
 export const rpcListeners = new Set();
 export async function rpc(fn, args = {}, schema) {
   const { data, error } = await db(schema).rpc(fn, args);

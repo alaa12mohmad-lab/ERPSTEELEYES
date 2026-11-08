@@ -100,7 +100,7 @@ export function renderMaster(container, cfg) {
     return v instanceof Node ? v.textContent : (v ?? '');
   }
 
-  // cfg.rowVisible(r, rows): إخفاء صفوف من غير بحث (مثلًا طي الشجرة). البحث بيعرض كل النتائج
+  // cfg.rowVisible(r, rows): إخفاء صفوف عند عدم البحث (مثل طي الشجرة). البحث يعرض كل النتائج
   function visibleRows() {
     if (!search) return cfg.rowVisible ? rows.filter((r) => cfg.rowVisible(r, rows)) : rows;
     const s = search.toLowerCase();

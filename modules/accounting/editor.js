@@ -16,7 +16,7 @@ export function entryDiff(e) {
   return { d: round2(d), c: round2(c), diff: round2(d - c) };
 }
 
-// تحويل سطر محفوظ (من v_lines) لسطر في المحرر
+// تحويل سطر محفوظ (من v_lines) إلى سطر في المحرر
 export function lineFromSaved(l) {
   return { account_id: l.account_id, debit: Number(l.debit) ? String(l.debit) : '', credit: Number(l.credit) ? String(l.credit) : '',
     party_id: l.party_id, employee_id: l.employee_id, project_id: l.project_id, cost_center_id: l.cost_center_id, equipment_id: l.equipment_id,
@@ -24,7 +24,7 @@ export function lineFromSaved(l) {
     tax_base: l.tax_base ? String(l.tax_base) : '', tax_category: l.tax_category && l.tax_category !== 'standard' ? l.tax_category : '' };
 }
 
-// أعمدة الصفحة. الاختيارية يقدر المستخدم يخفيها، وتظهر تلقائيًا لو فيها بيانات أو مطلوبة لحساب في الصفحة
+// أعمدة الصفحة. يمكن للمستخدم إخفاء الاختيارية منها، وتظهر تلقائيًا إذا احتوت بيانات أو تطلّبها حساب في الصفحة
 export const OPT_COLS = [['party', 'الطرف'], ['inv', 'رقم الفاتورة'], ['invdate', 'تاريخ الفاتورة'], ['due', 'الاستحقاق'], ['tax', 'الضريبة'],
   ['project', 'المشروع'], ['cc', 'مركز التكلفة'], ['eq', 'المعدة'], ['note', 'بيان السطر']];
 const COLS = [['no', 'القيد'], ['desc', 'البيان'], ['acc', 'الحساب'], ['dr', 'مدين'], ['cr', 'دائن'], ...OPT_COLS, ['del', '']];
@@ -35,7 +35,7 @@ export const hiddenCols = () => { const v = store.get(COLS_KEY, []); return Arra
 export function chooseColumns(onDone) {
   const hidden = new Set(hiddenCols());
   const m = modal({ title: 'الأعمدة الظاهرة', size: 'narrow' });
-  m.body.append(h('p', { class: 'notice', style: { marginBottom: '12px' } }, 'العمود المخفي يظهر تلقائيًا لو فيه بيانات، أو لو حساب في الصفحة يتطلبه.'),
+  m.body.append(h('p', { class: 'notice', style: { marginBottom: '12px' } }, 'العمود المخفي يظهر تلقائيًا إذا احتوى بيانات، أو إذا تطلّبه حساب في الصفحة.'),
     h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } }, OPT_COLS.map(([k, t]) => {
       const c = h('input', { type: 'checkbox', checked: !hidden.has(k) });
       c.addEventListener('change', () => { if (c.checked) hidden.delete(k); else hidden.add(k); });
@@ -45,27 +45,27 @@ export function chooseColumns(onDone) {
     h('button', { class: 'btn', onclick: () => { store.set(COLS_KEY, []); m.close(); onDone?.(); } }, 'إظهار الكل'));
 }
 
-// إضافة طرف سريعة من داخل القيد: الاسم والنوع والرقم الضريبي، ويتعمل له كارت في العملاء والموردين
+// إضافة طرف سريعة من داخل القيد: الاسم والنوع والرقم الضريبي، وتُنشأ له بطاقة في العملاء والموردين
 export function quickAddParty(lk, { kind = 'supplier', name = '' } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const m = modal({ title: 'إضافة طرف جديد', size: 'narrow', onClose: () => { if (!done) resolve(null); } });
     const nm = h('input', { class: 'input', value: name, placeholder: 'اسم المورد أو العميل' });
     const type = h('select', { class: 'input' }, [['supplier', 'مورد'], ['customer', 'عميل'], ['both', 'مورد وعميل']].map(([v, t]) => h('option', { value: v, selected: v === kind }, t)));
-    const tax = h('input', { class: 'input', dir: 'ltr', inputmode: 'numeric', maxlength: 15, placeholder: '15 رقم (اختياري)' });
+    const tax = h('input', { class: 'input', dir: 'ltr', inputmode: 'numeric', maxlength: 15, placeholder: '15 رقمًا (اختياري)' });
     const err = h('p', { class: 'notice bad', style: { display: 'none', marginTop: '10px' } });
     m.body.append(h('div', { class: 'form-grid' },
       h('div', { class: 'field wide' }, h('label', {}, 'الاسم', h('span', { class: 'req' }, '*')), nm),
       h('div', { class: 'field' }, h('label', {}, 'النوع'), type),
       h('div', { class: 'field' }, h('label', {}, 'الرقم الضريبي'), tax)),
-      h('p', { class: 'muted', style: { marginTop: '10px', fontSize: '12px' } }, 'الكود يتولّد تلقائيًا، وباقي البيانات تكملها بعدين من شاشة العملاء والموردين.'), err);
+      h('p', { class: 'muted', style: { marginTop: '10px', fontSize: '12px' } }, 'يتولّد الكود تلقائيًا، وتُستكمل باقي البيانات لاحقًا من شاشة العملاء والموردين.'), err);
     const save = async () => {
       err.style.display = 'none';
       try {
         const t = type.value;
         const r = await rpc('quick_add_party', { p_name: nm.value, p_customer: t !== 'supplier', p_supplier: t !== 'customer', p_tax: tax.value || null }, 'accounting');
         const o = lk.addParty({ id: r.id, code: r.code, name: r.name, is_customer: t !== 'supplier', is_supplier: t !== 'customer', tax_number: tax.value || null });
-        done = true; m.close(); toast(`اتضاف ${r.code} — ${r.name}`, 'ok'); resolve(o);
+        done = true; m.close(); toast(`أُضيف ${r.code} — ${r.name}`, 'ok'); resolve(o);
       } catch (x) { err.textContent = x.message; err.style.display = ''; }
     };
     [nm, tax].forEach((i) => i.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); save(); } }));
@@ -87,7 +87,7 @@ export function createEditor(opts) {
   let table = null;
   const changed = () => { refreshCols(); opts.onChange?.(entries); };
 
-  // الأعمدة المخفية تظهر تلقائيًا لو فيها بيانات أو مطلوبة
+  // الأعمدة المخفية تظهر تلقائيًا إذا احتوت بيانات أو كانت مطلوبة
   function refreshCols() {
     if (!table) return;
     const hidden = hiddenCols();
@@ -111,10 +111,10 @@ export function createEditor(opts) {
   const canCategory = (l) => { const a = accRow(l.account_id); return !!a && a.vat_role === 'none' && ['revenue', 'expense', 'asset'].includes(a.account_type); };
   const taxLine = (l) => isVat(l) || (canCategory(l) && ['zero', 'exempt'].includes(l.tax_category));
 
-  // النقل التلقائي داخل القيد (القيمة المنقولة تتحدّث لو تغيّر مصدرها، ولو كتبها المستخدم بنفسه لا تُلمس):
-  //   رقم الفاتورة: لو القيد فيه رقم واحد يتنقل لكل الأسطر الفاضية (مرجع للتتبع)
-  //   الطرف: لو القيد فيه طرف واحد يتنقل لسطر الضريبة ولكل سطر حسابه لا يخص أطرافًا (مرجع فقط، لا يدخل أرصدة الأطراف)
-  //   تاريخ الفاتورة: لأي سطر فيه رقم فاتورة = تاريخ الفاتورة الوحيد في القيد، وإلا تاريخ القيد
+  // النقل التلقائي داخل القيد (القيمة المنقولة تتحدّث إذا تغيّر مصدرها، وإذا كتبها المستخدم بنفسه لا تُمَس):
+  //   رقم الفاتورة: إذا كان في القيد رقم واحد يُنقل إلى كل الأسطر الفارغة (مرجع للتتبع)
+  //   الطرف: إذا كان في القيد طرف واحد يُنقل إلى سطر الضريبة وإلى كل سطر لا يخص حسابه الأطراف (مرجع فقط، لا يدخل في أرصدة الأطراف)
+  //   تاريخ الفاتورة: لأي سطر فيه رقم فاتورة = تاريخ الفاتورة الوحيد في القيد، وإلا فتاريخ القيد
   function autofill(e) {
     const src = (k) => [...new Set(e.lines.filter((l) => !l._auto?.[k]).map((l) => (typeof l[k] === 'string' ? l[k].trim() : l[k])).filter(Boolean))];
     const parties = src('party_id'), invs = src('invoice_no'), dates = src('invoice_date');
@@ -149,7 +149,7 @@ export function createEditor(opts) {
           p_lines: e.lines.map((l) => ({ account_id: l.account_id, party_id: l.party_id, debit: num(l.debit), credit: num(l.credit),
             invoice_no: (l.invoice_no || '').trim() || null, invoice_date: l.invoice_date || null })) }, 'accounting');
         (res || []).forEach((r) => ctrls.get(e.lines[r.line_index - 1])?.setInvStatus(r));
-      } catch { /* التنبيه اختياري — الحفظ يفحص على أي حال */ }
+      } catch { /* التنبيه اختياري — الحفظ يفحص في كل الأحوال */ }
     }, 450));
   }
 
@@ -231,14 +231,14 @@ export function createEditor(opts) {
   }
 
   function lineCells(e, ei, l, li) {
-    // خانة الحساب تقبل الحساب أو اسم المورد/العميل (يختار حسابه ويسجّل الطرف)
+    // خانة الحساب تقبل الحساب أو اسم المورد/العميل (فتختار حسابه وتسجّل الطرف)
     const accValue = () => (l.party_id && lk.isPartyAccount(l.account_id) ? lk.ensureCombo(l.party_id, l.account_id) : l.account_id);
     const accP = picker({ options: lk.accountOptions, listKey: 'accx-' + company, value: accValue(), placeholder: 'الحساب أو المورد/العميل', cls: 'acc', meta: lk.balText, onOpen: lk.loadBalances,
       onSpecial: async (_, typed) => {
         const o = await quickAddParty(lk, { name: '' });
         if (!o) return;
         const c = lk.accountOptions.find((x) => x.combo && x.party === o.id);
-        if (!c) { toast('الطرف اتضاف، لكن مفيش حساب موردين/عملاء في الشجرة يقبله — اختار الحساب واكتب الطرف في خانته', 'warn'); return; }
+        if (!c) { toast('أُضيف الطرف، لكن لا يوجد في الشجرة حساب موردين/عملاء يقبله — اختر الحساب واكتب الطرف في خانته', 'warn'); return; }
         accP.set(c.id); onAcc();
       } });
     accP.el.dataset.f = 'account';
@@ -254,7 +254,7 @@ export function createEditor(opts) {
     const invNo = h('input', { class: 'input cell-input inv', value: l.invoice_no || '', placeholder: 'رقم الفاتورة', 'data-f': 'inv', dir: 'ltr' });
     const invSt = h('span', { class: 'inv-st' });
     const invDate = h('input', { class: 'input cell-input', type: 'date', value: l.invoice_date || '', 'data-f': 'invdate' });
-    const dueDate = h('input', { class: 'input cell-input', type: 'date', value: l.due_date || '', 'data-f': 'due', title: 'ميعاد استحقاق الفاتورة لو مختلف عن مدة سداد الطرف' });
+    const dueDate = h('input', { class: 'input cell-input', type: 'date', value: l.due_date || '', 'data-f': 'due', title: 'تاريخ استحقاق الفاتورة إذا اختلف عن مدة سداد الطرف' });
     dueDate.addEventListener('change', () => { l.due_date = dueDate.value; changed(); });
     const base = h('input', { class: 'input cell-input num', inputmode: 'decimal', value: l.tax_base || '', placeholder: 'المبلغ الخاضع', 'data-f': 'base', title: 'المبلغ الخاضع للضريبة (قبل الضريبة)' });
     const cat = h('select', { class: 'input cell-input', 'data-f': 'cat', title: 'الفئة الضريبية للإقرار' },
@@ -290,7 +290,7 @@ export function createEditor(opts) {
     };
     ctrls.set(l, { partyP, invNo, invDate, refreshTax, setInvStatus });
 
-    // الطرف متاح في كل سطر (مرجع للتتبع). القائمة تتصفى حسب نوع الحساب، والإجباري يتعلّم
+    // الطرف متاح في كل سطر (مرجع للتتبع). تُصفّى القائمة حسب نوع الحساب، ويُميَّز الإجباري
     const applyRules = (a) => {
       const r = a?.row;
       const setRule = (p, rule) => p.el.classList.toggle('req', rule === 'required');
@@ -313,7 +313,7 @@ export function createEditor(opts) {
     if (initialAcc) { applyRules(initialAcc); partyP.set(l.party_id || l.employee_id); } else refreshTax();
 
     const after = (fn) => () => setTimeout(() => { fn(); changed(); }, 0);
-    // اختيار الحساب: لو اختار طرفًا (مورد ← حسابه) يتسجل الحساب والطرف معًا ويتحفظ كحساب افتراضي للطرف
+    // اختيار الحساب: إذا اختير طرف (مورد ← حسابه) يُسجَّل الحساب والطرف معًا ويُحفظ كحساب افتراضي للطرف
     const rememberDefault = () => {
       const r = accRow(l.account_id); const p = l.party_id && lk.byId('parties', l.party_id);
       if (!r || !p || !lk.isPartyAccount(l.account_id)) return;
@@ -349,7 +349,7 @@ export function createEditor(opts) {
     eqP.el.addEventListener('change', after(() => { l.equipment_id = eqP.id; }));
     note.addEventListener('input', () => { l.description = note.value; changed(); });
 
-    // اقتراح المبلغ المتبقي للتوازن، والمبلغ الخاضع، عند الدخول لخانة فاضية
+    // اقتراح المبلغ المتبقي للتوازن، والمبلغ الخاضع، عند الدخول إلى خانة فارغة
     const suggest = (input, side) => input.addEventListener('focus', () => {
       if (input.value || (side === 'debit' ? cr.value : dr.value)) return;
       const { diff } = entryDiff(e);
@@ -394,17 +394,17 @@ export function createEditor(opts) {
     }, 0);
   }
 
-  // تجميع القيود للحفظ مع فحص سريع في الشاشة. يرجع {payload, clean} أو يرمي خطأ فيه مكان السطر
+  // تجميع القيود للحفظ مع فحص سريع في الشاشة. يُرجع {payload, clean} أو يرمي خطأً يحدد مكان السطر
   function collect() {
     const clean = entries.map((e, src) => ({ ...e, src, lines: e.lines.map((l, lsrc) => ({ ...l, lsrc })).filter((l) => l.account_id || num(l.debit) || num(l.credit)) }))
       .filter((e) => e.lines.length || (e.description || '').trim());
-    if (!clean.length) throw Object.assign(new Error('الصفحة فاضية'), { at: null });
+    if (!clean.length) throw Object.assign(new Error('الصفحة فارغة'), { at: null });
     for (let i = 0; i < clean.length; i++) {
       const e = clean[i]; const label = single ? 'القيد' : `القيد ${i + 1}`;
       const fail = (msg, j = null) => { throw Object.assign(new Error(`${label}: ${msg}`), { at: { e: e.src, l: j === null ? null : e.lines[j].lsrc } }); };
       if (!e.entry_date) fail('التاريخ مطلوب');
       if (!(e.description || '').trim()) fail('البيان مطلوب');
-      if (e.lines.length < 2) fail('يحتاج سطرين على الأقل');
+      if (e.lines.length < 2) fail('يحتاج إلى سطرين على الأقل');
       for (let j = 0; j < e.lines.length; j++) {
         const l = e.lines[j];
         if (!l.account_id) fail(`السطر ${j + 1}: الحساب مطلوب`, j);

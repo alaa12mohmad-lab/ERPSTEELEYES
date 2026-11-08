@@ -1,6 +1,6 @@
 // فواتير المبيعات والإشعارات الدائنة
-//   الفاتورة الرسمية من المنارة: هنا بتتسجل برقمها وتتربط بالعقد أو أمر الشراء والمشروع.
-//   مسودة ← إرسال للاعتماد (تظهر في القيود المقترحة) ← اعتماد = قيد + تتحسب على العقد/أمر الشراء
+//   الفاتورة الرسمية تصدر من المنارة: تُسجَّل هنا برقمها وتُربط بالعقد أو أمر الشراء والمشروع.
+//   مسودة ← إرسال للاعتماد (تظهر في القيود المقترحة) ← الاعتماد = قيد + احتسابها على العقد/أمر الشراء
 import { acc, rpc } from '../../shared/sb.js';
 import { h, fmt, modal, toast, confirmDialog } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
@@ -76,7 +76,7 @@ export function renderSales(el) {
             h('td', { class: 'num' }, h('b', {}, N(sgn(r) * r.net_amount))), h('td', { class: 'num' }, r.settled != null ? N(r.settled) : ''),
             h('td', { class: 'num' }, left != null ? (Math.abs(left) < 0.005 ? h('span', { class: 'badge ok' }, 'مسددة') : N(left)) : ''),
             h('td', {}, badge(r.display_state), r.display_state === 'rejected' && r.reject_reason ? h('div', { class: 'help' }, r.reject_reason) : null));
-        }) : h('tr', {}, h('td', { colspan: 10, class: 'empty' }, rows.length ? 'مفيش نتايج' : 'مفيش فواتير في الفترة دي')))))));
+        }) : h('tr', {}, h('td', { colspan: 10, class: 'empty' }, rows.length ? 'لا توجد نتائج' : 'لا توجد فواتير في هذه الفترة')))))));
   }
   load();
   const off = state.onCompaniesChange(() => { if (document.body.contains(el)) load(); else off(); });
@@ -105,9 +105,9 @@ export async function salesEditor(opts = {}) {
   const companies = ids();
   const coSel = h('select', { class: 'input', disabled: !!inv || !editable },
     companies.map((id) => h('option', { value: id, selected: (inv?.company_id || opts.company_id) === id }, state.companyName(id))));
-  const no = h('input', { class: 'input ltr', value: inv?.invoice_no || '', placeholder: 'نفس رقم المنارة' });
+  const no = h('input', { class: 'input ltr', value: inv?.invoice_no || '', placeholder: 'رقم المنارة نفسه' });
   const date = h('input', { class: 'input', type: 'date', value: inv?.invoice_date || today() });
-  const due = h('input', { class: 'input', type: 'date', value: inv?.due_date && inv?.state !== 'draft' ? inv.due_date : '', title: 'فاضي = من مدة سداد العميل' });
+  const due = h('input', { class: 'input', type: 'date', value: inv?.due_date && inv?.state !== 'draft' ? inv.due_date : '', title: 'فارغ = حسب مدة سداد العميل' });
   const refSel = h('select', { class: 'input' });
   const kindSel = h('select', { class: 'input' });
   const origSel = h('select', { class: 'input' });
@@ -142,7 +142,7 @@ export async function salesEditor(opts = {}) {
     lk.revenue = A((r) => r.account_type === 'revenue');
     Object.keys(slot).forEach((k) => slot[k].replaceChildren(pk[k].el));
     if (credit) {
-      origSel.replaceChildren(h('option', { value: '' }, '— اختار الفاتورة —'), ...originals.map((o) => h('option', { value: o.id, selected: (inv?.original_id || opts.original_id) === o.id },
+      origSel.replaceChildren(h('option', { value: '' }, '— اختر الفاتورة —'), ...originals.map((o) => h('option', { value: o.id, selected: (inv?.original_id || opts.original_id) === o.id },
         `${o.invoice_no} — ${o.party_name} — ${fmt.date(o.invoice_date)} — ${fmt.num(o.net_amount)}`)));
     }
     fillRefs();
@@ -160,7 +160,7 @@ export async function salesEditor(opts = {}) {
       ...list.map((c) => h('option', { value: c.id, selected: c.id === keep }, `${REF[c.kind]} ${c.contract_no}${c.title ? ' — ' + c.title : ''}`)));
   }
 
-  // المرجع بيحدد العميل والمشروع والحسابات ونوع الفاتورة
+  // المرجع يحدد العميل والمشروع والحسابات ونوع الفاتورة
   function applyRef(first) {
     const c = contracts.find((x) => x.id === refSel.value);
     if (c) {
@@ -239,7 +239,7 @@ export async function salesEditor(opts = {}) {
     clearTimeout(pt);
     pt = setTimeout(async () => {
       const p = payload();
-      if (!p.items.some((x) => x.price > 0) || !p.party_id || !p.invoice_no) { prev.replaceChildren(h('div', { class: 'help', style: { marginTop: '10px' } }, 'اكتب رقم الفاتورة والعميل والمبالغ عشان تظهر الحسبة والقيد.')); return; }
+      if (!p.items.some((x) => x.price > 0) || !p.party_id || !p.invoice_no) { prev.replaceChildren(h('div', { class: 'help', style: { marginTop: '10px' } }, 'اكتب رقم الفاتورة والعميل والمبالغ لتظهر الحسبة والقيد.')); return; }
       try {
         const r = await rpc('save_sales_invoice', { p, p_preview: true }, 'accounting');
         drawCalc(r.calc, r.due_date);
@@ -253,14 +253,14 @@ export async function salesEditor(opts = {}) {
     const sum = (k) => r.lines.reduce((x, l) => x + Number(l[k] || 0), 0);
     prev.replaceChildren(
       Number(r.over) > 0 ? h('div', { class: 'notice warn', style: { marginTop: '12px' } },
-        `⚠ الفاتورة دي هتعدّي قيمة أمر الشراء بـ ${fmt.num(r.over)} — هيتعلّم "محتاج تعديل من العميل". لما يوصل التعديل سجّله من صفحة العقود وأوامر الشراء.`) : null,
+        `⚠ هذه الفاتورة ستتجاوز قيمة أمر الشراء بمبلغ ${fmt.num(r.over)} — وسيُعلَّم الأمر «يحتاج إلى تعديل من العميل». عند وصول التعديل سجّله من صفحة العقود وأوامر الشراء.`) : null,
       h('div', { class: 'kpis', style: { marginTop: '12px' } },
         h('div', { class: 'kpi' }, h('small', {}, c && kindSel.value === 'progress' && c.kind !== 'po' ? 'قيمة الأعمال' : 'قبل الضريبة'), h('b', {}, fmt.num(r.work))),
         Number(r.recovery) || Number(r.retention) ? h('div', { class: 'kpi' }, h('small', {}, 'استرداد الدفعة / المحتجز'), h('b', {}, `${fmt.num(r.recovery)} / ${fmt.num(r.retention)}`)) : null,
         h('div', { class: 'kpi' }, h('small', {}, 'الخاضع / الضريبة'), h('b', {}, `${fmt.num(r.vat_base)} / ${fmt.num(r.vat)}`)),
         h('div', { class: 'kpi main' }, h('small', {}, credit ? 'الصافي المخصوم من العميل' : 'الصافي على العميل'), h('b', {}, fmt.num(r.net)),
           !credit && dueAuto ? h('span', {}, 'الاستحقاق ' + fmt.date(dueAuto)) : null)),
-      h('div', { class: 'help', style: { margin: '6px 0' } }, inv?.state === 'approved' ? 'القيد:' : 'القيد اللي هيتعمل بعد الاعتماد:'),
+      h('div', { class: 'help', style: { margin: '6px 0' } }, inv?.state === 'approved' ? 'القيد:' : 'القيد الذي سيُنشأ بعد الاعتماد:'),
       h('table', { class: 'grid report' }, h('thead', {}, h('tr', {}, ['الحساب', 'مدين', 'دائن', 'بيان'].map((x) => h('th', {}, x)))),
         h('tbody', {}, r.lines.map((l) => h('tr', {}, h('td', {}, accName(l.account_id)), h('td', { class: 'num' }, Number(l.debit) ? N(l.debit) : ''),
           h('td', { class: 'num' }, Number(l.credit) ? N(l.credit) : ''), h('td', { class: 'help' }, l.description || (l.invoice_no ? 'فاتورة ' + l.invoice_no : ''))))),
@@ -269,8 +269,8 @@ export async function salesEditor(opts = {}) {
 
   // الشكل
   fields.kind = F('نوع الفاتورة', kindSel);
-  fields.rec = F('استرداد الدفعة المقدمة', rec, { help: 'فاضي = حسب نسبة العقد' });
-  fields.ret = F('المحتجز', ret, { help: 'فاضي = حسب نسبة العقد' });
+  fields.rec = F('استرداد الدفعة المقدمة', rec, { help: 'فارغ = حسب نسبة العقد' });
+  fields.ret = F('المحتجز', ret, { help: 'فارغ = حسب نسبة العقد' });
   const status = inv ? h('div', { class: 'toolbar', style: { marginBottom: '10px' } }, badge(st),
     inv.entry_ref ? h('a', { href: 'javascript:void 0', onclick: () => openEntry(inv.entry_id, { onChange: () => { m.close(); done(); } }) }, 'القيد ' + inv.entry_ref) : null,
     inv.state === 'rejected' && inv.reject_reason ? h('span', { class: 'notice bad', style: { margin: 0, padding: '4px 10px' } }, 'سبب الرفض: ' + inv.reject_reason) : null,
@@ -279,11 +279,11 @@ export async function salesEditor(opts = {}) {
     h('div', { class: 'form-grid' },
       F('الشركة', coSel, { req: true }),
       credit ? F('الفاتورة الأصلية', origSel, { req: true, wide: true }) : F('العميل', slot.party, { req: true }),
-      credit ? null : F('المرجع', refSel, { help: 'عقد أو أمر شراء من العميل — الفاتورة بتنقّص الباقي منه بعد الاعتماد' }),
+      credit ? null : F('المرجع', refSel, { help: 'عقد أو أمر شراء من العميل — تُنقِص الفاتورة المتبقي منه بعد الاعتماد' }),
       credit ? null : fields.kind,
       F(credit ? 'رقم الإشعار (من المنارة)' : 'رقم الفاتورة (من المنارة)', no, { req: true }), F('التاريخ', date, { req: true }),
-      credit ? null : F('ميعاد الاستحقاق', due, { help: 'فاضي = حسب مدة سداد العميل' }),
-      F('المشروع', slot.project), F('حساب العميل', slot.partyAcc, { req: true }), F('حساب الضريبة', slot.vat, { help: 'فاضي = بدون ضريبة' }),
+      credit ? null : F('تاريخ الاستحقاق', due, { help: 'فارغ = حسب مدة سداد العميل' }),
+      F('المشروع', slot.project), F('حساب العميل', slot.partyAcc, { req: true }), F('حساب الضريبة', slot.vat, { help: 'فارغ = بدون ضريبة' }),
       fields.rec, fields.ret, F('ملاحظات', notes, { wide: true })),
     h('div', { class: 'section-title' }, credit ? 'المرتجع / الخصم' : 'البنود'), itemsBox, prev, err);
   [no, date, due, rec, ret].forEach((x) => { x.disabled = !editable; x.addEventListener('input', refresh); });
@@ -301,8 +301,8 @@ export async function salesEditor(opts = {}) {
   const save = async (submit) => {
     const r = await run(() => rpc('save_sales_invoice', { p: payload(), p_preview: false }, 'accounting'));
     if (!r) return;
-    if (submit) { if (!(await run(() => rpc('submit_sales_invoice', { p_id: r.id }, 'accounting'), 'اتبعتت للاعتماد — هتلاقيها في القيود المقترحة'))) { inv = { ...(inv || {}), id: r.id, state: 'draft' }; done(); return; } }
-    else toast('اتحفظت مسودة', 'ok');
+    if (submit) { if (!(await run(() => rpc('submit_sales_invoice', { p_id: r.id }, 'accounting'), 'أُرسلت للاعتماد — تجدها في القيود المقترحة'))) { inv = { ...(inv || {}), id: r.id, state: 'draft' }; done(); return; } }
+    else toast('حُفظت مسودة', 'ok');
     m.close(); done();
   };
   const btns = [];
@@ -310,13 +310,13 @@ export async function salesEditor(opts = {}) {
     btns.push(h('button', { class: 'btn primary', onclick: () => save(true) }, 'حفظ وإرسال للاعتماد'), h('button', { class: 'btn', onclick: () => save(false) }, 'حفظ مسودة'));
     if (inv) btns.push(h('button', { class: 'btn ghost', onclick: async () => {
       if (!(await confirmDialog(`حذف مسودة ${inv.invoice_no}؟`, { ok: 'حذف', danger: true }))) return;
-      if (await run(() => rpc('discard_sales_invoice', { p_id: inv.id, p_reason: 'حذف مسودة' }, 'accounting'), 'اتحذفت المسودة')) { m.close(); done(); }
+      if (await run(() => rpc('discard_sales_invoice', { p_id: inv.id, p_reason: 'حذف مسودة' }, 'accounting'), 'حُذفت المسودة')) { m.close(); done(); }
     } }, 'حذف المسودة'));
   }
   if (inv?.state === 'submitted' && state.can('accounting', 2)) {
-    btns.push(h('button', { class: 'btn', onclick: async () => { if (await run(() => rpc('withdraw_sales_invoice', { p_id: inv.id }, 'accounting'), 'اتسحبت — عدّلها وابعتها تاني')) { m.close(); done(); salesEditor({ id: inv.id, onDone: opts.onDone }); } } }, 'سحب للتعديل'));
+    btns.push(h('button', { class: 'btn', onclick: async () => { if (await run(() => rpc('withdraw_sales_invoice', { p_id: inv.id }, 'accounting'), 'سُحبت — عدّلها وأرسلها مرة أخرى')) { m.close(); done(); salesEditor({ id: inv.id, onDone: opts.onDone }); } } }, 'سحب للتعديل'));
     if (state.can('accounting', 4)) btns.push(h('button', { class: 'btn primary', onclick: async () => {
-      if (await run(() => rpc('approve_proposed', { p_id: inv.proposed_id }, 'accounting'), 'اتعتمدت واتعمل القيد')) { m.close(); done(); }
+      if (await run(() => rpc('approve_proposed', { p_id: inv.proposed_id }, 'accounting'), 'اعتُمدت وأُنشئ القيد')) { m.close(); done(); }
     } }, 'اعتماد'));
   }
   if (inv?.display_state === 'approved' && !credit && state.can('accounting', 2)) {

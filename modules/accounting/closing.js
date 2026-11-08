@@ -15,9 +15,9 @@ export function renderClosing(el) {
     h('div', { class: 'card', style: { marginBottom: '12px' } },
       h('div', { class: 'toolbar' }, h('label', {}, 'الشركة '), coSel, h('label', {}, 'حساب الإقفال '), accSlot),
       h('p', { class: 'help', style: { margin: '8px 0 0' } },
-        'الإقفال بيعمل قيد بتاريخ 31/12 ينقل صافي ربح أو خسارة السنة من الإيرادات والمصروفات لحساب الأرباح المحتجزة (أو جاري الشركاء). ',
-        'قائمة الدخل وربحية المشاريع والمعدات بتفضل زي ما هي لأنها بتتجاهل قيد الإقفال. ',
-        'لو احتجت تعدّل في سنة مقفولة: افتح قيد الإقفال وألغِه، عدّل، واقفل تاني.')),
+        'ينشئ الإقفال قيدًا بتاريخ 31/12 ينقل صافي ربح السنة أو خسارتها من الإيرادات والمصروفات إلى حساب الأرباح المحتجزة (أو جاري الشركاء). ',
+        'تبقى قائمة الدخل وربحية المشاريع والمعدات كما هي لأنها تتجاهل قيد الإقفال. ',
+        'لتعديل سنة مقفلة: افتح قيد الإقفال وألغِه، ثم عدّل، ثم أقفل السنة من جديد.')),
     out);
 
   async function build() {
@@ -25,7 +25,7 @@ export function renderClosing(el) {
     const lk = await loadLookups(co);
     const eq = lk.postable.filter((a) => a.row.account_type === 'equity');
     const def = eq.find((a) => /محتجز|مبقا|مرحل/.test(a.name))?.id || eq[0]?.id || null;
-    pk = picker({ options: eq, listKey: `closing-${co}`, value: def, placeholder: 'اختار حساب حقوق ملكية' });
+    pk = picker({ options: eq, listKey: `closing-${co}`, value: def, placeholder: 'اختر حساب حقوق ملكية' });
     accSlot.replaceChildren(pk.el);
     await load();
   }
@@ -52,24 +52,24 @@ export function renderClosing(el) {
       h('tbody', {}, rows.map((r) => h('tr', {},
         h('td', {}, h('b', {}, String(r.y))),
         h('td', { class: 'num' }, r.profit != null ? fmt.num(r.profit) : ''),
-        h('td', {}, r.closed ? h('span', { class: 'badge ok' }, `مقفولة — قيد ${r.closed.fiscal_year}-${r.closed.entry_no}`)
-          : r.profit != null ? h('span', { class: 'badge warn' }, 'مفتوحة') : h('span', { class: 'help' }, /مفيش إيرادات/.test(r.err) ? 'مفيش إيرادات أو مصروفات' : r.err)),
+        h('td', {}, r.closed ? h('span', { class: 'badge ok' }, `مقفلة — قيد ${r.closed.fiscal_year}-${r.closed.entry_no}`)
+          : r.profit != null ? h('span', { class: 'badge warn' }, 'مفتوحة') : h('span', { class: 'help' }, /لا توجد إيرادات/.test(r.err) ? 'لا توجد إيرادات أو مصروفات' : r.err)),
         h('td', {}, r.closed ? h('button', { class: 'btn ghost', onclick: () => openEntry(r.closed.id, { onChange: load }) }, 'فتح القيد')
-          : r.profit != null && r.y >= nowY ? h('span', { class: 'help' }, 'السنة لسه ما خلصتش') : r.profit != null && lvl4 ? h('button', { class: 'btn primary', onclick: () => close(r) }, 'إقفال السنة') : null))))))),
-    lvl4 ? null : h('p', { class: 'help' }, 'الإقفال يتطلب صلاحية "يعتمد" في المحاسبة.'));
+          : r.profit != null && r.y >= nowY ? h('span', { class: 'help' }, 'السنة لم تنتهِ بعد') : r.profit != null && lvl4 ? h('button', { class: 'btn primary', onclick: () => close(r) }, 'إقفال السنة') : null))))))),
+    lvl4 ? null : h('p', { class: 'help' }, 'يتطلب الإقفال صلاحية «يعتمد» في المحاسبة.'));
   }
 
   const pkId = () => { const id = pk?.id; return id && String(id).startsWith('p:') ? String(id).split(':')[2] : id || null; };
 
   async function close(r) {
     const eqId = pkId();
-    if (!eqId) { toast('اختار حساب الإقفال الأول', 'bad'); return; }
+    if (!eqId) { toast('اختر حساب الإقفال أولًا', 'bad'); return; }
     const name = pk.el.value || 'حساب الإقفال';
-    const msg = `إقفال سنة ${r.y}: هيتعمل قيد بتاريخ 31/12/${r.y} فيه ${r.lines} سطر، وصافي ${r.profit >= 0 ? 'الربح' : 'الخسارة'} ${fmt.num(Math.abs(r.profit))} هيتحوّل لـ "${name}". متأكد؟`;
+    const msg = `إقفال سنة ${r.y}: سيُنشأ قيد بتاريخ 31/12/${r.y} فيه ${r.lines} سطرًا، ويُحوَّل صافي ${r.profit >= 0 ? 'الربح' : 'الخسارة'} ${fmt.num(Math.abs(r.profit))} إلى «${name}». هل أنت متأكد؟`;
     if (!(await confirmDialog(msg, { ok: 'إقفال' }))) return;
     try {
       await rpc('close_year', { p_company: co, p_year: r.y, p_equity_account: eqId }, 'accounting');
-      toast(`سنة ${r.y} اتقفلت`, 'ok');
+      toast(`أُقفلت سنة ${r.y}`, 'ok');
       load();
     } catch (e) { toast(e.message, 'bad'); }
   }

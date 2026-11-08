@@ -1,4 +1,5 @@
 // تقارير المحاسبة
+import { printHeader, printFooter } from '../../shared/branding.js';
 import { acc, rpc, errMsg } from '../../shared/sb.js';
 import { h, modal, toast, fmt } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
@@ -17,19 +18,17 @@ export function exportAoa(name, aoa) {
   window.XLSX.writeFile(wb, name + '.xlsx');
 }
 
-// طباعة تقرير: راس فيه الشركة والعنوان والفترة، والمحتوى، وسطر توقيعات اختياري.
-//   fit: يصغّر التقرير لحد ما يدخل في صفحة A4 واحدة (لحد 62% عشان يفضل مقروء)، ولو أطول يتقسم وراس الجدول يتكرر
+// طباعة تقرير: ترويسة فيها الشركة والعنوان والفترة، ثم المحتوى، وسطر توقيعات اختياري.
+//   fit: يصغّر التقرير حتى يتسع في صفحة A4 واحدة (حتى 62% ليبقى مقروءًا)، وإذا كان أطول يُقسَّم ويتكرر رأس الجدول
 export function printReport(content, { title, company, period, fit = false, sign = false } = {}) {
   document.getElementById('print-area')?.remove();
   const body = content.cloneNode(true);
   body.querySelectorAll('button, .fin-title, .no-print').forEach((x) => x.remove());
   const area = h('div', { id: 'print-area', class: 'rp' + (fit ? ' fit' : '') },
-    h('div', { class: 'rp-head' },
-      h('div', {}, h('div', { class: 'rp-co' }, company || ''), h('div', { class: 'rp-title' }, title || '')),
-      h('div', { class: 'rp-period' }, period || '')),
+    printHeader(company, title, period),
     body,
     sign ? h('div', { class: 'pv-sign rp-sign' }, ['أعدّه', 'راجعه', 'اعتمده'].map((t) => h('div', {}, h('div', { class: 'pv-sl' }, t), h('div', { class: 'pv-line' }), h('div', { class: 'rp-sd' }, 'التاريخ: ..../..../........')))) : null,
-    h('div', { class: 'pv-foot' }, `طُبع ${fmt.datetime(new Date())} — ${state.profile?.full_name || ''}`));
+    h('div', { class: 'pv-foot' }, printFooter(state.profile?.full_name, fmt.datetime)));
   document.body.append(area);
   if (fit) {
     // قياس بعرض صفحة A4 (186 مم بعد الهوامش) ومقارنة بارتفاعها (273 مم)
@@ -52,12 +51,14 @@ export function frame(el, controls, onRun) {
   let last = null;
   const prn = h('button', { class: 'btn', onclick: () => {
     if (!out.childNodes.length) return window.print();
-    printReport(out, { title: last?.name || document.title, ...(last?.print || {}) });
+    // التقارير التي لا تحدد الشركة: الشركات المختارة في الأعلى
+    const sel = state.selectedCompanies.length ? state.selectedCompanies : state.companies().map((c) => c.id);
+    printReport(out, { title: last?.name || document.title, company: sel.map((id) => state.companyName(id)).join(' + '), ...(last?.print || {}) });
   } }, 'طباعة');
   el.replaceChildren(h('div', { class: 'card', style: { marginBottom: '12px' } }, h('div', { class: 'toolbar' }, ...controls, h('div', { class: 'grow' }), run, exp, prn)), out);
   let seq = 0;
   async function go() {
-    const my = ++seq;   // لو اتغير اختيار وانت بتحسب، النتيجة القديمة تتجاهل
+    const my = ++seq;   // إذا تغيّر الاختيار أثناء الحساب تُتجاهل النتيجة القديمة
     out.replaceChildren(h('div', { class: 'empty' }, 'جارٍ الحساب…'));
     try {
       const tmp = h('div');
@@ -418,9 +419,9 @@ export async function renderVatReturn(el) {
 
     out.replaceChildren(
       incomplete.length ? h('div', { class: 'notice warn', style: { marginBottom: '10px' } },
-        `${incomplete.length} سطر ضريبة بدون بيانات كاملة (غالبًا قيود قديمة قبل إضافة خانات الفاتورة) — افتحها من الكشف وعدّلها.`) : '',
+        `${incomplete.length} سطر ضريبة بلا بيانات كاملة (غالبًا قيود قديمة قبل إضافة خانات الفاتورة) — افتحها من الكشف وعدّلها.`) : '',
       offRate.length ? h('div', { class: 'notice warn', style: { marginBottom: '10px' } },
-        `${offRate.length} فاتورة الضريبة فيها لا تساوي ${lk.vatRate * 100}% من المبلغ الخاضع — راجعها.`) : '',
+        `${offRate.length} فاتورة ضريبتها لا تساوي ${lk.vatRate * 100}% من المبلغ الخاضع — راجعها.`) : '',
       h('div', { class: 'card fin', style: { marginBottom: '12px' } },
         h('div', { class: 'toolbar' }, h('strong', {}, `الإقرار الضريبي — ${state.companyName(company)}`), h('span', { class: 'help' }, `من ${from} إلى ${to} (بتاريخ القيد)`)),
         h('table', { class: 'grid report vat-sum' },
@@ -476,7 +477,7 @@ export async function renderInvoices(el) {
     const sum = (k) => rows.reduce((s, r) => s + Number(r[k]), 0);
     out.replaceChildren(h('div', { class: 'card' },
       h('div', { class: 'toolbar' }, h('strong', {}, `الفواتير — ${state.companyName(company)}`),
-        h('span', { class: 'help' }, 'من رقم الفاتورة المكتوب على سطر حساب العميل أو المورد. السداد يُربط بالفاتورة بكتابة نفس الرقم على سطر السداد، والسداد بدون رقم يظهر "غير موزع" — توزّعه بتعديل القيد وتقسيم السطر على أرقام الفواتير.')),
+        h('span', { class: 'help' }, 'من رقم الفاتورة المكتوب على سطر حساب العميل أو المورد. يُربط السداد بالفاتورة بكتابة الرقم نفسه على سطر السداد، والسداد بلا رقم يظهر «غير موزع» — وتوزّعه بتعديل القيد وتقسيم السطر على أرقام الفواتير.')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
         h('thead', {}, h('tr', {}, ['الطرف', 'الحساب', 'رقم الفاتورة', 'تاريخ الفاتورة', 'القيد', 'القيمة', 'المسدد', 'المتبقي', 'العمر (يوم)', 'الحالة'].map((t) => h('th', {}, t)))),
         h('tbody', {}, rows.length ? rows.map((r) => h('tr', { onclick: () => openEntry(r.entry_id) },

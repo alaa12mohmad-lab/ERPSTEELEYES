@@ -655,3 +655,14 @@ table.grid tr.cancelled td { text-decoration: line-through; color: var(--ink-3);
 /* 1.5 فواتير المبيعات وأوامر الشراء */
 .pbar.over i { background: var(--bad); }
 .kpi .bad, .kpi span.bad { color: var(--bad); font-weight: 600; }
+/* هوية النظام: صورة الشعار، ترويسة الطباعة، رسالة الإعلان */
+.logo.has-img { background: transparent !important; padding: 0; overflow: hidden; }
+.logo.has-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.auth-logo { display: flex; justify-content: center; margin-bottom: 8px; }
+.auth-logo .logo { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; font-size: 26px; font-weight: 800; color: #fff; background: var(--accent); }
+.rp-brand { display: flex; gap: 10px; align-items: center; }
+.rp-logo { width: 46px; height: 46px; object-fit: contain; }
+.rp-meta { font-size: 10.5px; color: #555; margin: 1px 0 2px; }
+.pv-hijri { font-size: 10.5px; color: #555; }
+.notice.announce { margin-bottom: 14px; font-weight: 600; }
+.notice.announce.info { border-color: var(--accent); }

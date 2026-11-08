@@ -23,10 +23,10 @@ export function renderAccounts(el) {
   el.replaceChildren(
     h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap' } },
       h('label', { style: { fontWeight: 600 } }, 'الشركة:'), sel,
-      h('span', { class: 'help' }, 'الحساب المجمّع لا يقبل الإدخال. الحساب الفاضي (بدون حركات ولا فروع) يُحذف، والحساب اللي عليه حركات يُوقف بشرط رصيد صفر.')),
+      h('span', { class: 'help' }, 'الحساب المجمّع لا يقبل الإدخال. الحساب الفارغ (بلا حركات ولا فروع) يُحذف، والحساب الذي عليه حركات يُوقَف بشرط أن يكون رصيده صفرًا.')),
     box);
 
-  // طي الشجرة: الحسابات المجمّعة المطوية محفوظة لكل شركة. الافتراضي: يظهر المستوى الأول والتاني بس
+  // طي الشجرة: الحسابات المجمّعة المطوية محفوظة لكل شركة. الافتراضي: يظهر المستويان الأول والثاني فقط
   const foldKey = () => 'erp-acc-fold-' + company;
   let folded = null; let redraw = () => {};
   const saveFold = () => store.set(foldKey(), [...folded]);
@@ -94,27 +94,27 @@ export function renderAccounts(el) {
         { key: 'income_level', label: 'مستوى قائمة الدخل', type: 'select', options: opts.list(INC), help: 'للإيرادات والمصروفات' },
         { key: 'cashflow_class', label: 'تصنيف التدفق النقدي', type: 'select', options: opts.list(CF), help: 'حسابات الصندوق والبنوك = نقدية' },
         { key: 'party_kind', label: 'حساب أطراف', type: 'select', options: opts.list(PK),
-          help: 'لحسابات العملاء والموردين وذمم الموظفين (أصل أو التزام): أرصدة الأطراف وكشوفها والفواتير تتحسب منها. في حساب إيراد أو مصروف يحدد قائمة الطرف فقط ولا يدخل الأرصدة. سيبه فاضي لو الطرف مجرد مرجع للتتبع' },
+          help: 'لحسابات العملاء والموردين وذمم الموظفين (أصل أو التزام): تُحسب منها أرصدة الأطراف وكشوفها والفواتير. في حساب إيراد أو مصروف يحدد قائمة الطرف فقط ولا يدخل في الأرصدة. اتركه فارغًا إذا كان الطرف مجرد مرجع للتتبع' },
         { key: 'party_rule', label: 'الطرف في السطر', type: 'select', required: true, default: 'optional', options: opts.list(PARTY_RULES),
-          help: 'إجباري: لازم يتكتب طرف في كل سطر على الحساب' },
+          help: 'إجباري: يجب كتابة طرف في كل سطر على هذا الحساب' },
         { key: 'project_rule', label: 'المشروع', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
         { key: 'cost_center_rule', label: 'مركز التكلفة', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
         { key: 'equipment_rule', label: 'المعدة', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },
         { key: 'is_cash_account', label: 'حساب نقدية (يمنع الرصيد السالب)', type: 'bool' },
-        { key: 'min_balance', label: 'حد الأمان (لحسابات النقدية)', type: 'number', help: 'صفحة السيولة تنبّهك لو الرصيد نزل تحته' },
+        { key: 'min_balance', label: 'حد الأمان (لحسابات النقدية)', type: 'number', help: 'تنبّهك صفحة السيولة إذا انخفض الرصيد عنه' },
         { key: 'is_control_account', label: 'حساب رقابة (عملاء / موردين / عهد)', type: 'bool' },
         { key: 'vat_role', label: 'الضريبة', type: 'select', required: true, default: 'none', options: opts.list(VAT),
           help: 'لحساب ضريبة المدخلات (أصل) أو المخرجات (التزام) فقط. المصروفات والإيرادات: بدون ضريبة' },
         { key: 'is_noncash_adjustment', label: 'تسوية غير نقدية (مجمع إهلاك / مخصصات)', type: 'bool' },
-        { key: 'cashflow_line', label: 'بند التدفق (الطريقة المباشرة)', help: 'اختياري — اسم البند في قائمة التدفقات النقدية (مثلًا: مدفوع لمقاولي الباطن). فاضي = حسب نوع الحساب' },
+        { key: 'cashflow_line', label: 'بند التدفق (الطريقة المباشرة)', help: 'اختياري — اسم البند في قائمة التدفقات النقدية (مثل: مدفوع لمقاولي الباطن). فارغ = حسب نوع الحساب' },
         { key: 'notes', label: 'ملاحظات', type: 'textarea' },
       ],
       beforeSave: (v, rec) => {
         const out = {};
         if (rec.company_id === undefined || !rec.id) out.company_id = company;
         if (v.party_rule === 'forbidden') out.party_rule = 'optional';
-        if (v.vat_role && v.vat_role !== 'none' && !['asset', 'liability'].includes(v.account_type)) throw new Error('حساب الضريبة لازم يكون أصل (مدخلات) أو التزام (مخرجات) — المصروف أو الإيراد يتعلّم "بدون ضريبة"');
-        if (v.party_rule === 'required' && !v.party_kind) throw new Error('الطرف الإجباري يحتاج تحديد نوع حساب الأطراف');
+        if (v.vat_role && v.vat_role !== 'none' && !['asset', 'liability'].includes(v.account_type)) throw new Error('يجب أن يكون حساب الضريبة أصلًا (مدخلات) أو التزامًا (مخرجات) — ويُحدَّد المصروف أو الإيراد بـ «بدون ضريبة»');
+        if (v.party_rule === 'required' && !v.party_kind) throw new Error('الطرف الإجباري يتطلب تحديد نوع حساب الأطراف');
         if (v.is_postable) {
           if (!v.cashflow_class) throw new Error('حدد تصنيف التدفق النقدي');
           if (['asset', 'liability', 'equity'].includes(v.account_type) && !v.bs_section) throw new Error('حدد قسم المركز المالي');
@@ -123,8 +123,8 @@ export function renderAccounts(el) {
         return out;
       },
       formExtras: (r, box) => {
-        const why = r.has_lines ? 'الحساب لا يُحذف لأنه مستخدم في قيود (ولو قيد ملغي). يمكن توقيفه لو رصيده صفر.'
-          : r.has_children ? 'الحساب لا يُحذف لأن له حسابات فرعية (ولو موقوفة). احذف الفروع الأول.' : '';
+        const why = r.has_lines ? 'لا يُحذف الحساب لأنه مستخدم في قيود (ولو في قيد ملغي). يمكن توقيفه إذا كان رصيده صفرًا.'
+          : r.has_children ? 'لا يُحذف الحساب لأن له حسابات فرعية (ولو كانت موقوفة). احذف الفروع أولًا.' : '';
         if (why) box.append(h('div', { class: 'notice', style: { marginTop: '10px' } }, why));
       },
       toolbarExtras: (ctx) => {
@@ -143,10 +143,10 @@ export function renderAccounts(el) {
   function copyChart() {
     const m = modal({ title: 'نسخ شجرة الحسابات', size: 'narrow' });
     const from = h('select', { class: 'input', id: 'cf' }, state.companies().filter((c) => c.id !== company).map((c) => h('option', { value: c.id }, c.name)));
-    m.body.append(h('p', { class: 'notice' }, `تُنسخ الشجرة كاملة بخصائصها إلى "${state.companyName(company)}". يعمل فقط لو الشركة ليس فيها حسابات.`),
+    m.body.append(h('p', { class: 'notice' }, `تُنسخ الشجرة كاملة بخصائصها إلى «${state.companyName(company)}». يعمل فقط إذا لم تكن في الشركة حسابات.`),
       h('div', { class: 'field', style: { marginTop: '12px' } }, h('label', { for: 'cf' }, 'من شركة'), from));
     m.foot.append(h('button', { class: 'btn primary', onclick: async () => {
-      try { const n = await rpc('copy_chart', { p_from: from.value, p_to: company }, 'accounting'); toast(`تم نسخ ${n} حساب`, 'ok'); m.close(); draw(); } catch (e) { toast(e.message, 'bad'); }
+      try { const n = await rpc('copy_chart', { p_from: from.value, p_to: company }, 'accounting'); toast(`نُسخ ${n} حسابًا`, 'ok'); m.close(); draw(); } catch (e) { toast(e.message, 'bad'); }
     } }, 'نسخ'), h('button', { class: 'btn', onclick: m.close }, 'رجوع'));
   }
 
