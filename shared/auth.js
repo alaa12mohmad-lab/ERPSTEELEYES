@@ -90,7 +90,7 @@ export async function mfaForm({ onDone, onCancel }) {
     box.append(
       h('div', { class: 'notice' }, 'افتح تطبيق Google Authenticator أو Microsoft Authenticator وامسح الرمز، ثم اكتب الرقم الظاهر.'),
       h('img', { src: en.totp.qr_code, alt: 'QR', style: { width: '180px', alignSelf: 'center', background: '#fff' } }),
-      h('div', { class: 'help ltr', style: { textAlign: 'center', fontSize: '12px', wordBreak: 'break-all' } }, en.totp.secret));
+      h('div', { class: 'help ltr', style: { textAlign: 'center', fontSize: 'calc(12px * var(--fs, 1))', wordBreak: 'break-all' } }, en.totp.secret));
   } else {
     box.append(h('div', { class: 'notice' }, 'اكتب الرقم الظاهر في تطبيق Authenticator.'));
   }

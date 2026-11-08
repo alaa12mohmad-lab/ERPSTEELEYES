@@ -197,18 +197,20 @@ async function billDialog(c, kind, s, done) {
 // ---------------------------------------------------------------------
 // نموذج العقد
 // ---------------------------------------------------------------------
-async function contractForm(c, done) {
-  const m = modal({ title: c ? `تعديل العقد ${c.contract_no}` : 'عقد جديد', size: 'wide' });
-  const coSel = h('select', { class: 'input', disabled: !!c }, ids().map((id) => h('option', { value: id, selected: c?.company_id === id }, cname(id))));
+//   prefill (من عرض سعر): { company_id, kind, title, contract_value, project_id, party_id, notes } — done(id) يستلم معرّف العقد الجديد
+export async function contractForm(c, done, prefill = null) {
+  const m = modal({ title: c ? `تعديل العقد ${c.contract_no}` : prefill ? 'أمر شراء من عرض سعر' : 'عقد جديد', size: 'wide' });
+  const coIds = prefill?.company_id && !ids().includes(prefill.company_id) ? [...ids(), prefill.company_id] : ids();
+  const coSel = h('select', { class: 'input', disabled: !!c || !!prefill }, coIds.map((id) => h('option', { value: id, selected: (c?.company_id || prefill?.company_id) === id }, cname(id))));
   const kind = h('select', { class: 'input', disabled: !!c }, h('option', { value: 'customer' }, 'عقد مع عميل (إيراد)'), h('option', { value: 'po' }, 'أمر شراء من عميل (إيراد)'),
     h('option', { value: 'subcontract' }, 'مقاول باطن (تكلفة)'));
-  if (c) kind.value = c.kind;
+  if (c) kind.value = c.kind; else if (prefill?.kind) kind.value = prefill.kind;
   const no = h('input', { class: 'input ltr', value: c?.contract_no || '' });
-  const title = h('input', { class: 'input', value: c?.title || '' });
+  const title = h('input', { class: 'input', value: c?.title || prefill?.title || '' });
   const num = (v, ph) => h('input', { class: 'input', type: 'number', step: '0.01', value: v ?? '', placeholder: ph || '' });
-  const value = num(c?.contract_value), retPct = num(c?.retention_pct ?? 0), adv = num(c?.advance_amount ?? 0), recPct = num(c?.advance_recovery_pct ?? 0);
+  const value = num(c?.contract_value ?? prefill?.contract_value), retPct = num(c?.retention_pct ?? 0), adv = num(c?.advance_amount ?? 0), recPct = num(c?.advance_recovery_pct ?? 0);
   const start = h('input', { class: 'input', type: 'date', value: c?.start_date || '' }), end = h('input', { class: 'input', type: 'date', value: c?.end_date || '' });
-  const notes = h('textarea', { class: 'input', rows: 2 }, c?.notes || '');
+  const notes = h('textarea', { class: 'input', rows: 2 }, c?.notes || prefill?.notes || '');
   const slots = {}; const pk = {};
   ['project', 'party', 'party_account', 'main', 'retention', 'advance', 'vat'].forEach((k) => { slots[k] = h('div'); });
   const err = h('p', { class: 'notice bad', style: { display: 'none', marginTop: '10px' } });
@@ -228,7 +230,7 @@ async function contractForm(c, done) {
       vat: A((r) => r.vat_role === (cust ? 'output' : 'input')),
     };
     const defaults = {
-      project: c?.project_id, party: c?.party_id,
+      project: c?.project_id || prefill?.project_id, party: c?.party_id || prefill?.party_id,
       party_account: c?.party_account_id || lists.party_account[0]?.id,
       main: c?.main_account_id || (cust ? lists.main.find((a) => a.row.project_rule === 'required')?.id || lists.main[0]?.id : null),
       retention: c ? c.retention_account_id : byName(lists.retention, /محتجز/),
@@ -271,11 +273,11 @@ async function contractForm(c, done) {
     if (miss.length) { err.textContent = 'ناقص: ' + miss.map((x) => x[1]).join('، '); err.style.display = ''; return; }
     if (row.advance_amount > 0 && !row.advance_recovery_pct) { err.textContent = 'حدد نسبة استرداد الدفعة المقدمة'; err.style.display = ''; return; }
     save.disabled = true;
-    const q = c ? acc.from('contracts').update(row).eq('id', c.id) : acc.from('contracts').insert(row);
-    const { error } = await q;
+    const q = c ? acc.from('contracts').update(row).eq('id', c.id) : acc.from('contracts').insert(row).select('id').single();
+    const { data: saved, error } = await q;
     save.disabled = false;
     if (error) { err.textContent = /contracts_no_uq/.test(error.message) ? 'رقم العقد مستخدم سابقًا في هذه الشركة' : error.message; err.style.display = ''; return; }
-    toast(c ? 'عُدّل العقد' : 'سُجّل العقد', 'ok'); m.close(); done();
+    toast(c ? 'عُدّل العقد' : 'سُجّل العقد', 'ok'); m.close(); done(saved?.id);
   } }, 'حفظ');
   m.foot.append(...[save,
     c && state.can('accounting', 3) ? h('button', { class: 'btn ghost', onclick: async () => {

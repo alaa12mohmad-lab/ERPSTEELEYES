@@ -14,7 +14,7 @@ import { VERSION } from './shared/version.js';
 import { sb, core } from './shared/sb.js';
 import { h, toast, modal, icon, store } from './shared/ui.js';
 import { state } from './shared/state.js';
-import { MODES, ACCENTS, getTheme, setTheme } from './shared/theme.js';
+import { MODES, ACCENTS, FONT_SIZES, getTheme, setTheme } from './shared/theme.js';
 import { SCENES, POWERS, getBackdrop, setBackdrop, mountBackdrop } from './shared/backdrop.js';
 import { renderLogin, renderMessage, renderChangePassword, renderMfa, changePasswordForm, mfaForm } from './shared/auth.js';
 import { mountAssistant } from './shared/assistant.js';
@@ -166,6 +166,8 @@ function toggleMenu() {
     h('div', { class: 'seg' }, MODES.map(([k, v]) => h('button', { class: t.mode === k ? 'on' : '', onclick: () => { setTheme({ mode: k }); redraw(); } }, v))),
     h('div', { class: 'swatches' }, ACCENTS.map(([k, v, c]) => h('button', { class: 'swatch' + (t.accent === k ? ' on' : ''), title: v, style: { background: c },
       onclick: () => { setTheme({ accent: k }); redraw(); } }))),
+    h('div', { class: 'sec' }, 'حجم الخط'),
+    h('div', { class: 'seg' }, FONT_SIZES.map(([k, v]) => h('button', { class: t.fs === k ? 'on' : '', onclick: () => { setTheme({ fs: k }); redraw(); } }, v))),
     h('button', { onclick: () => { toggleMenu(); openBackdropSettings(); } }, 'خلفية الرئيسية: ' + (SCENES[getBackdrop().scene]?.name || 'بدون حركة')),
     h('div', { class: 'sec' }, 'الحساب'),
     h('button', { onclick: () => { toggleMenu(); openChangePassword(); } }, 'تغيير كلمة المرور'),

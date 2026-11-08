@@ -78,17 +78,28 @@ export function companyInfo(idOrName) {
   return companiesInfo.find((c) => c.id === idOrName || c.name === idOrName) || null;
 }
 
+// تحديث بيانات الشركات قبل الطباعة (حتى يظهر العنوان أو الهاتف المضاف للتو دون إعادة تحميل الصفحة)
+export async function refreshCompanies() {
+  try {
+    const { data } = await core.from('companies').select('*').eq('status', 'active').order('code');
+    if (data) companiesInfo = data;
+  } catch { /* تبقى البيانات السابقة */ }
+}
+
 // ترويسة الطباعة: الشعار + اسم الشركة + السجل التجاري والرقم الضريبي والعنوان
-//   companies: معرّف شركة أو اسمها، أو نص بعدة أسماء (تقرير مجمّع) فيظهر الاسم فقط
+//   companies: معرّف شركة أو اسمها، أو مصفوفة معرّفات (تقرير مجمّع) فتظهر الأسماء فقط
 export function printHeader(companies, title, period) {
-  const c = companyInfo(companies);
+  const list = Array.isArray(companies) ? companies : null;
+  const c = list ? (list.length === 1 ? companyInfo(list[0]) : null) : companyInfo(companies);
   const details = c ? [c.cr_number && 'س.ت: ' + c.cr_number, c.vat_number && 'الرقم الضريبي: ' + c.vat_number, c.address, c.phone && 'هاتف: ' + c.phone].filter(Boolean) : [];
+  const name = c ? c.name : list ? 'تقرير مجمّع' : (companies || '');
+  const sub = !c && list ? list.map((id) => companyInfo(id)?.name || '').filter(Boolean).join(' + ') : '';
   return h('div', { class: 'rp-head' },
     h('div', { class: 'rp-brand' },
       brand.logo ? h('img', { class: 'rp-logo', src: brand.logo, alt: '' }) : null,
       h('div', {},
-        h('div', { class: 'rp-co' }, c ? c.name : (companies || '')),
-        details.length ? h('div', { class: 'rp-meta' }, details.join(' — ')) : null,
+        h('div', { class: 'rp-co' }, name),
+        details.length ? h('div', { class: 'rp-meta' }, details.join(' — ')) : sub ? h('div', { class: 'rp-meta' }, sub) : null,
         h('div', { class: 'rp-title' }, title || ''))),
     h('div', { class: 'rp-period' }, period || ''));
 }

@@ -182,8 +182,9 @@ export function companySelect(onChange, { includeAll = false } = {}) {
   const comps = state.companies();
   const initial = state.selectedCompanies.length === 1 ? state.selectedCompanies[0] : (state.selectedCompanies[0] || comps[0]?.id);
   const sel = h('select', { class: 'input', style: { width: 'auto', minWidth: '180px' } },
-    includeAll && h('option', { value: '' }, 'كل الشركات'),
+    includeAll && h('option', { value: '' }, typeof includeAll === 'string' ? includeAll : 'كل الشركات'),
     comps.map((c) => h('option', { value: c.id, selected: c.id === initial }, c.name)));
+  sel.dataset.co = '1';   // تقرأه الطباعة لتحديد ترويسة الشركة
   sel.addEventListener('change', () => onChange(sel.value));
   return sel;
 }

@@ -1,7 +1,7 @@
 // طباعة القيود: سند قيد لكل قيد (اسم الشركة، الرقم، التاريخ، الأسطر، الإجمالي بالحروف، التوقيعات)
 import { h, fmt } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
-import { brand, companyInfo, printFooter, hijri } from '../../shared/branding.js';
+import { brand, companyInfo, printFooter, hijri, refreshCompanies } from '../../shared/branding.js';
 import { ENTRY_TYPES, TAX_CATEGORIES } from './lookups.js';
 
 // ---------------------------------------------------------------------
@@ -117,13 +117,14 @@ function voucher(entry, lines, users) {
 // بيانات الشركة تحت اسمها في الترويسة
 function coMeta(id) {
   const c = companyInfo(id);
-  const t = c ? [c.cr_number && 'س.ت: ' + c.cr_number, c.vat_number && 'الرقم الضريبي: ' + c.vat_number, c.address].filter(Boolean).join(' — ') : '';
+  const t = c ? [c.cr_number && 'س.ت: ' + c.cr_number, c.vat_number && 'الرقم الضريبي: ' + c.vat_number, c.address, c.phone && 'هاتف: ' + c.phone].filter(Boolean).join(' — ') : '';
   return t ? h('div', { class: 'rp-meta' }, t) : null;
 }
 
 // list: [{ entry (صف من v_entries), lines (صفوف v_lines) }]
-export function printEntries(list, users = []) {
+export async function printEntries(list, users = []) {
   document.getElementById('print-area')?.remove();
+  await refreshCompanies();
   const area = h('div', { id: 'print-area' },
     list.map(({ entry, lines }) => voucher(entry, lines, users)),
     h('div', { class: 'pv-foot' }, printFooter(state.profile?.full_name, fmt.datetime)));

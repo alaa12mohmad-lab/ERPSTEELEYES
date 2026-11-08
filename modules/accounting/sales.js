@@ -84,7 +84,7 @@ export function renderSales(el) {
 
 // ---------------------------------------------------------------------
 // المحرر: فاتورة جديدة/مسودة/عرض فاتورة، أو إشعار دائن
-//   opts: { id?, doc_type?, company_id?, contract_id?, bill_kind?, original_id?, onDone }
+//   opts: { id?, doc_type?, company_id?, contract_id?, bill_kind?, original_id?, prefill? (من عرض سعر), onSaved?(id), onDone }
 // ---------------------------------------------------------------------
 export async function salesEditor(opts = {}) {
   let inv = null;
@@ -113,7 +113,7 @@ export async function salesEditor(opts = {}) {
   const origSel = h('select', { class: 'input' });
   const rec = h('input', { class: 'input', type: 'number', step: '0.01', placeholder: 'تلقائي', value: inv?.recovery ?? '' });
   const ret = h('input', { class: 'input', type: 'number', step: '0.01', placeholder: 'تلقائي', value: inv?.retention ?? '' });
-  const notes = h('input', { class: 'input', value: inv?.notes || '' });
+  const notes = h('input', { class: 'input', value: inv?.notes || opts.prefill?.notes || '' });
   const slot = { party: h('div'), project: h('div'), partyAcc: h('div'), vat: h('div') };
   const itemsBox = h('div');
   const prev = h('div');
@@ -133,12 +133,12 @@ export async function salesEditor(opts = {}) {
     ]);
     contracts = cs || []; originals = os || [];
     const A = (f) => lk.postable.filter((a) => f(a.row));
-    pk.party = picker({ options: lk.customers, listKey: 'si-party', value: inv?.party_id || null, placeholder: 'العميل', onChange: () => { fillRefs(); refresh(); } });
-    pk.project = picker({ options: lk.projects, listKey: 'si-proj-' + co, value: inv?.project_id || null, placeholder: 'بدون مشروع', onChange: refresh });
+    pk.party = picker({ options: lk.customers, listKey: 'si-party', value: inv?.party_id || opts.prefill?.party_id || null, placeholder: 'العميل', onChange: () => { fillRefs(); refresh(); } });
+    pk.project = picker({ options: lk.projects, listKey: 'si-proj-' + co, value: inv?.project_id || opts.prefill?.project_id || null, placeholder: 'بدون مشروع', onChange: refresh });
     const partyAccs = A((r) => r.account_type === 'asset' && ['customer', 'any'].includes(r.party_kind) && r.vat_role === 'none');
     pk.partyAcc = picker({ options: partyAccs, listKey: 'si-pacc-' + co, value: inv?.party_account_id || partyAccs[0]?.id || null, onChange: refresh });
     const vats = A((r) => r.vat_role === 'output');
-    pk.vat = picker({ options: vats, listKey: 'si-vat-' + co, value: inv ? inv.vat_account_id : vats[0]?.id || null, placeholder: 'بدون ضريبة', onChange: refresh });
+    pk.vat = picker({ options: vats, listKey: 'si-vat-' + co, value: inv ? inv.vat_account_id : opts.prefill?.no_vat ? null : vats[0]?.id || null, placeholder: 'بدون ضريبة', onChange: refresh });
     lk.revenue = A((r) => r.account_type === 'revenue');
     Object.keys(slot).forEach((k) => slot[k].replaceChildren(pk[k].el));
     if (credit) {
@@ -146,7 +146,8 @@ export async function salesEditor(opts = {}) {
         `${o.invoice_no} — ${o.party_name} — ${fmt.date(o.invoice_date)} — ${fmt.num(o.net_amount)}`)));
     }
     fillRefs();
-    items = (inv?.items?.length ? inv.items : [{ description: '', qty: 1, price: '' }]).map((x) => ({ ...x }));
+    items = (inv?.items?.length ? inv.items : opts.prefill?.items?.length ? opts.prefill.items : [{ description: '', qty: 1, price: '' }]).map((x) => ({ ...x }));
+    if (!inv && opts.prefill) { const def = lk.revenue.find((x) => x.row.project_rule !== 'forbidden')?.id || lk.revenue[0]?.id; items.forEach((x) => { if (!x.account_id) x.account_id = def; }); }
     if (!inv && opts.contract_id) refSel.value = opts.contract_id;
     if (!inv && opts.bill_kind) kindSel.value = opts.bill_kind;
     applyRef(true);
@@ -301,6 +302,7 @@ export async function salesEditor(opts = {}) {
   const save = async (submit) => {
     const r = await run(() => rpc('save_sales_invoice', { p: payload(), p_preview: false }, 'accounting'));
     if (!r) return;
+    if (opts.onSaved && !inv) { try { await opts.onSaved(r.id); } catch (e) { toast(e.message, 'bad'); } }
     if (submit) { if (!(await run(() => rpc('submit_sales_invoice', { p_id: r.id }, 'accounting'), 'أُرسلت للاعتماد — تجدها في القيود المقترحة'))) { inv = { ...(inv || {}), id: r.id, state: 'draft' }; done(); return; } }
     else toast('حُفظت مسودة', 'ok');
     m.close(); done();

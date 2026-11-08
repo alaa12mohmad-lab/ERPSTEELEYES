@@ -3,7 +3,7 @@ import { state } from '../../shared/state.js';
 import { renderAccounts } from './accounts.js';
 import { renderJournal } from './journal.js';
 import { renderRegister, renderProposed, renderDeleted } from './register.js';
-import { renderTrialBalance, renderStatement, renderIncome, renderBalanceSheet, renderPartyBalances, renderProjects, renderEquipment, renderVatReturn, renderInvoices } from './reports.js';
+import { renderTrialBalance, renderStatement, renderIncome, renderBalanceSheet, renderPartyBalances, renderProjects, renderEquipment, renderVatReturn, renderInvoices, renderIntercompany } from './reports.js';
 import { search } from './search.js';
 import { renderImport } from './import.js';
 import { renderLiquidity, renderCashFlow, renderAging, renderCommitments } from './liquidity.js';
@@ -11,6 +11,7 @@ import { renderBank } from './bank.js';
 import { renderContracts } from './contracts.js';
 import { renderClosing } from './closing.js';
 import { renderSales } from './sales.js';
+import { renderQuotes } from './quotes.js';
 import { renderIntegrity } from './integrity.js';
 
 const IN = 'الإدخال', SETUP = 'الإعداد', REP = 'التقارير', TAX = 'الفواتير والضريبة', CASH = 'السيولة';
@@ -38,8 +39,10 @@ export default {
     { path: 'income', title: 'قائمة الدخل', group: REP, render: renderIncome },
     { path: 'balance-sheet', title: 'المركز المالي', group: REP, render: renderBalanceSheet },
     { path: 'parties', title: 'أرصدة الأطراف', group: REP, render: renderPartyBalances },
+    { path: 'intercompany', title: 'مطابقة بين الشركات', group: REP, subtitle: 'ما تسجّله كل شركة على شقيقتها يجب أن يتقابل — والفرق يدل على فاتورة أو سداد ناقص', render: renderIntercompany },
     { path: 'projects', title: 'ربحية المشاريع', group: REP, render: renderProjects },
     { path: 'equipment', title: 'المعدات', group: REP, render: renderEquipment },
+    { path: 'quotes', title: 'عروض الأسعار', group: TAX, wide: true, subtitle: 'عروض على ترويسة الشركة تُحفظ PDF: مسودة ← مُرسَل ← مقبول ← تحويل إلى فاتورة أو أمر شراء', render: renderQuotes },
     { path: 'sales', title: 'فواتير المبيعات', group: TAX, wide: true, subtitle: 'فواتير المنارة برقمها: تُربط بالعقد أو أمر الشراء والمشروع، وتمر بالاعتماد قبل أن تصبح قيدًا', render: renderSales },
     { path: 'invoices', title: 'الفواتير', group: TAX, render: renderInvoices },
     { path: 'vat', title: 'الإقرار الضريبي', group: TAX, render: renderVatReturn },

@@ -19,7 +19,7 @@ async function projectCompaniesPanel(project, box, { editable, reload }) {
     const others = state.companies().filter((c) => !active.some((r) => r.company_id === c.id));
     const sel = h('select', { class: 'input', style: { width: 'auto' } }, others.map((c) => h('option', { value: c.id }, c.name)));
     box.replaceChildren(
-      h('h3', { style: { fontSize: '15px', margin: '0 0 8px' } }, 'الشركات المشاركة ',
+      h('h3', { style: { fontSize: 'calc(15px * var(--fs, 1))', margin: '0 0 8px' } }, 'الشركات المشاركة ',
         h('span', { class: 'badge ' + (active.length > 1 ? 'accent' : '') }, active.length > 1 ? 'مشروع مشترك' : 'مشروع خاص')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
         h('tbody', {}, active.map((r) => h('tr', { style: { cursor: 'default' } },
@@ -63,7 +63,7 @@ async function pricesPanel(subjectKind, subject, box, { editable }) {
     if (error) { box.replaceChildren(h('div', { class: 'notice bad' }, errMsg(error))); return; }
     const canAdd = editable && state.can(module, 2) && visibleKinds.length > 0;
     box.replaceChildren(
-      h('h3', { style: { fontSize: '15px', margin: '0 0 8px' } }, subjectKind === 'equipment' ? 'الأسعار' : 'الأجور'),
+      h('h3', { style: { fontSize: 'calc(15px * var(--fs, 1))', margin: '0 0 8px' } }, subjectKind === 'equipment' ? 'الأسعار' : 'الأجور'),
       h('p', { class: 'help', style: { margin: '0 0 8px' } }, 'كل سعر له تاريخ سريان. السعر الجديد لا يغيّر الفترات السابقة. التصحيح = إلغاء السعر وإضافة جديد.'),
       data.length === 0 ? h('div', { class: 'notice' }, 'لا توجد أسعار') :
         h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
@@ -193,6 +193,7 @@ export default {
           { key: 'code', label: 'الكود' }, { key: 'name', label: 'الاسم' },
           { key: 'type', label: 'النوع', render: (r) => [r.is_customer && 'عميل', r.is_supplier && 'مورد'].filter(Boolean).join(' و ') },
           { key: 'tax_number', label: 'الرقم الضريبي' }, { key: 'phone', label: 'الجوال' }, { key: 'contact_person', label: 'المسؤول' },
+          { key: 'sister_company_id', label: 'شقيقة', render: (r) => (r.sister_company_id ? state.companyName(r.sister_company_id) || '✓' : '') },
         ],
         fields: [
           { key: 'code', label: 'الكود', required: true, readonlyOnEdit: true, ltr: true },
@@ -204,6 +205,8 @@ export default {
           { key: 'supplier_terms_days', label: 'مدة السداد للمورد (يوم)', type: 'number' },
           { key: 'phone', label: 'الجوال', ltr: true },
           { key: 'contact_person', label: 'الشخص المسؤول' },
+          { key: 'sister_company_id', label: 'شركة شقيقة', type: 'select', options: opts.companies(), placeholder: '— ليس شركة من شركاتنا —',
+            help: 'إذا كان هذا الطرف إحدى شركاتنا (مثل عيون الحديد كعميل لريان): تُستبعد تعاملاته من التقارير المجمّعة' },
           { key: 'notes', label: 'ملاحظات', type: 'textarea' },
         ],
         validate: (v) => (!v.is_customer && !v.is_supplier ? 'حدد: عميل أو مورد أو كلاهما' : v.tax_number && !/^\d{15}$/.test(v.tax_number) ? 'الرقم الضريبي 15 رقمًا' : null),

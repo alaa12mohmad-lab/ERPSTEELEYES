@@ -58,7 +58,7 @@ export function quickAddParty(lk, { kind = 'supplier', name = '' } = {}) {
       h('div', { class: 'field wide' }, h('label', {}, 'الاسم', h('span', { class: 'req' }, '*')), nm),
       h('div', { class: 'field' }, h('label', {}, 'النوع'), type),
       h('div', { class: 'field' }, h('label', {}, 'الرقم الضريبي'), tax)),
-      h('p', { class: 'muted', style: { marginTop: '10px', fontSize: '12px' } }, 'يتولّد الكود تلقائيًا، وتُستكمل باقي البيانات لاحقًا من شاشة العملاء والموردين.'), err);
+      h('p', { class: 'muted', style: { marginTop: '10px', fontSize: 'calc(12px * var(--fs, 1))' } }, 'يتولّد الكود تلقائيًا، وتُستكمل باقي البيانات لاحقًا من شاشة العملاء والموردين.'), err);
     const save = async () => {
       err.style.display = 'none';
       try {

@@ -14,15 +14,19 @@ export const ACCENTS = [
 const KEY = 'erp-theme';
 const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
+// حجم خط الشاشة لكل جهاز: s صغير، m عادي، l كبير، xl كبير جدًا
+export const FONT_SIZES = [['s', 'صغير'], ['m', 'عادي'], ['l', 'كبير'], ['xl', 'كبير جدًا']];
+
 export function getTheme() {
   const t = store.get(KEY, null) || {};
-  return { mode: MODES.some((m) => m[0] === t.mode) ? t.mode : 'light', accent: ACCENTS.some((a) => a[0] === t.accent) ? t.accent : 'iron' };
+  return { mode: MODES.some((m) => m[0] === t.mode) ? t.mode : 'light', accent: ACCENTS.some((a) => a[0] === t.accent) ? t.accent : 'iron', fs: FONT_SIZES.some((f) => f[0] === t.fs) ? t.fs : 'm' };
 }
 
 export function applyTheme(t = getTheme()) {
   const dark = t.mode === 'dark' || (t.mode === 'auto' && media?.matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.documentElement.dataset.accent = t.accent;
+  document.documentElement.dataset.fs = t.fs || 'm';
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = dark ? '#0f141b' : '#1b2430';
 }

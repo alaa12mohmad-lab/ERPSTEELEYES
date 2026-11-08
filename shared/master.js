@@ -152,7 +152,7 @@ export function renderMaster(container, cfg) {
       cfg.formExtras(row, extra, { editable, reload: load });
     }
     if (!isNew) {
-      m.body.append(h('div', { class: 'help', style: { marginTop: '16px', color: 'var(--ink-3)', fontSize: '12px' } },
+      m.body.append(h('div', { class: 'help', style: { marginTop: '16px', color: 'var(--ink-3)', fontSize: 'calc(12px * var(--fs, 1))' } },
         `أُنشئ ${fmt.datetime(row.created_at)} — آخر تعديل ${fmt.datetime(row.updated_at)}`));
     }
 

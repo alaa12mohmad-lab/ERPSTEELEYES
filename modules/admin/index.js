@@ -301,7 +301,7 @@ async function renderAudit(el) {
     } },
       h('td', {}, fmt.datetime(a.at)), h('td', {}, name(a.user_id)), h('td', {}, TABLE_NAMES[a.table_name] || a.table_name),
       h('td', {}, a.action === 'insert' ? h('span', { class: 'badge ok' }, 'إضافة') : a.action === 'delete' ? h('span', { class: 'badge bad' }, 'حذف') : h('span', { class: 'badge' }, 'تعديل')),
-      h('td', { style: { whiteSpace: 'normal', maxWidth: '420px', color: 'var(--ink-2)', fontSize: '13px' } },
+      h('td', { style: { whiteSpace: 'normal', maxWidth: '420px', color: 'var(--ink-2)', fontSize: 'calc(13px * var(--fs, 1))' } },
         a.action === 'update' ? Object.keys(a.new_data || {}).join('، ') : (a.new_data?.name || a.new_data?.code || a.new_data?.full_name || '')))));
   };
   tableSel.addEventListener('change', load);
