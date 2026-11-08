@@ -11,6 +11,7 @@ import { renderBank } from './bank.js';
 import { renderContracts } from './contracts.js';
 import { renderClosing } from './closing.js';
 import { renderSales } from './sales.js';
+import { renderIntegrity } from './integrity.js';
 
 const IN = 'الإدخال', SETUP = 'الإعداد', REP = 'التقارير', TAX = 'الفواتير والضريبة', CASH = 'السيولة';
 
@@ -30,6 +31,7 @@ export default {
     { path: 'aging', title: 'أعمار الديون', group: CASH, subtitle: 'العملاء والموردون حسب التأخير عن ميعاد الاستحقاق', render: renderAging },
     { path: 'commitments', title: 'الالتزامات الثابتة', group: CASH, subtitle: 'إيجارات وأقساط ورواتب بتتكرر — بتدخل في السيولة المتوقعة', render: renderCommitments },
     { path: 'accounts', title: 'شجرة الحسابات', group: SETUP, render: renderAccounts },
+    { path: 'integrity', title: 'فحص سلامة البيانات', group: SETUP, subtitle: 'قواعد لازم تكون صح دايمًا: توازن القيود والميزانية، الضريبة، الفواتير، العقود — أي خطأ يظهر بالأحمر', render: renderIntegrity },
     { path: 'closing', title: 'إقفال السنة', group: SETUP, subtitle: 'نقل صافي ربح السنة للأرباح المحتجزة بقيد إقفال في 31/12', render: renderClosing, visible: () => state.can('accounting', 3) },
     { path: 'trial-balance', title: 'ميزان المراجعة', group: REP, render: renderTrialBalance },
     { path: 'statement', title: 'كشف حساب', group: REP, render: renderStatement },

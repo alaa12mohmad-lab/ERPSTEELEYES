@@ -20,6 +20,7 @@ import { renderLogin, renderMessage, renderChangePassword, renderMfa, changePass
 import { mountAssistant } from './shared/assistant.js';
 import { runBackup, askBackupBeforeLogout, lastBackup } from './shared/backup.js';
 import { startIdle, stopIdle, idleLogoutNotice } from './shared/idle.js';
+import { dailyIntegrity } from './modules/accounting/integrity.js';
 import coreModule from './modules/core/index.js';
 import adminModule from './modules/admin/index.js';
 import accountingModule from './modules/accounting/index.js';
@@ -121,7 +122,7 @@ function renderShell() {
   mountAssistant(document.body);
   route();
   startIdle();
-  if (p.is_admin) securityAlert(p);
+  if (p.is_admin) { securityAlert(p); setTimeout(dailyIntegrity, 4000); }
 }
 
 // تنبيه المدير: أي تغيير في المستخدمين أو الأدوار أو الصلاحيات أو الإعدادات عمله حد غيره (أو من غير مستخدم) من آخر مرة شافه
