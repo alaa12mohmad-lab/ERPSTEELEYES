@@ -54,7 +54,7 @@ export function runBackup({ excel = true } = {}) {
     const m = modal({ title: 'نسخة احتياطية', size: 'narrow', onClose: () => resolve(done) });
     const bar = h('div', { class: 'bk-bar' }, h('i'));
     const line = h('div', { class: 'help' }, 'جارٍ التجهيز…');
-    m.body.append(h('p', { style: { marginTop: 0 } }, 'يجري تحميل جميع جداول قاعدة البيانات (دون ملفات المرفقات). لا تغلق الصفحة حتى تكتمل الملفات.'), bar, line);
+    m.body.append(h('p', { style: { marginTop: 0 } }, 'يجري تحميل جميع جداول قاعدة البيانات (دون ملفات المرفقات) في ملفين: JSON للاسترجاع وExcel للقراءة. لا تغلق الصفحة حتى يكتملا.'), bar, line);
     (async () => {
       const stamp = new Date();
       const tag = stamp.toISOString().slice(0, 16).replace(/[:T]/g, '-');
@@ -71,24 +71,32 @@ export function runBackup({ excel = true } = {}) {
         bar.firstChild.style.width = '100%';
         const meta = { app: CONFIG.APP_NAME, version: VERSION, created_at: stamp.toISOString(), created_by: state.profile?.email || '', tables: Object.fromEntries(counts), skipped, note: 'نسخة إدارية لبيانات قاعدة البيانات (لا تشمل ملفات المرفقات). الاسترجاع الكامل من النسخة الليلية.' };
         download(`erp-backup-${tag}.json`, new Blob([JSON.stringify({ meta, data })], { type: 'application/json' }));
+        // ملف Excel للقراءة فقط: إذا تعذّر لا تفشل النسخة (ملف JSON هو الأساس ونزل بالفعل)
+        let excelErr = null;
         if (excel && window.XLSX) {
-          const wb = window.XLSX.utils.book_new();
-          window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([['الجدول', 'عدد السجلات'], ...counts, [], ['التاريخ', fmt.datetime(stamp)], ['بواسطة', meta.created_by], ['الإصدار', VERSION]]), 'الفهرس');
-          for (const [name, rows] of Object.entries(data)) {
-            if (!rows.length) continue;
-            // خلية Excel لا تتسع لأكثر من 32,767 حرفًا (صور الشعار والترويسة وبعض سجلات المراجعة) — تُقتطع في ملف Excel فقط، وتبقى كاملة في ملف JSON
-            const cell = (v) => { const t = v !== null && typeof v === 'object' ? JSON.stringify(v) : v; return typeof t === 'string' && t.length > 32000 ? t.slice(0, 200) + ` …[مقتطع: ${t.length.toLocaleString('en')} حرف — النص كامل في ملف JSON]` : t; };
-            const flat = rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, cell(v)])));
-            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(flat), name.replace(/^core\./, '').replace(/^accounting\./, 'acc_').slice(0, 31));
-          }
-          window.XLSX.writeFile(wb, `erp-backup-${tag}.xlsx`);
+          try {
+            const wb = window.XLSX.utils.book_new();
+            window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([['الجدول', 'عدد السجلات'], ...counts, [], ['التاريخ', fmt.datetime(stamp)], ['بواسطة', meta.created_by], ['الإصدار', VERSION]]), 'الفهرس');
+            // خلية Excel لا تتسع لأكثر من 32,767 حرفًا (صور الشعار والترويسة وبعض سجلات المراجعة) — تُقتطع في Excel فقط وتبقى كاملة في JSON
+            const cell = (v) => {
+              const t = v !== null && typeof v === 'object' ? JSON.stringify(v) : v;
+              return typeof t === 'string' && t.length > 30000 ? t.slice(0, 200) + ` …[مقتطع: ${t.length} حرف — كامل في ملف JSON]` : t;
+            };
+            for (const [name, rows] of Object.entries(data)) {
+              if (!rows.length) continue;
+              const flat = rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, cell(v)])));
+              window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(flat), name.replace(/^core\./, '').replace(/^accounting\./, 'acc_').slice(0, 31));
+            }
+            window.XLSX.writeFile(wb, `erp-backup-${tag}.xlsx`);
+          } catch (e) { excelErr = e.message; }
         }
         store.set(LAST_KEY, stamp.toISOString());
         done = true;
         line.textContent = `اكتملت النسخة: ${counts.length} جدولًا، ${total.toLocaleString('en')} سجلًا — الملفات في مجلد التنزيلات.`
           + (skipped.length ? ` (جداول غير موجودة في قاعدة البيانات بعد: ${skipped.join('، ')} — شغّل ملفات التحديث)` : '')
           + ' ملفات المرفقات غير مشمولة.';
-        if (skipped.length) line.style.color = 'var(--warn, #b26b00)';
+        if (excelErr) line.textContent += ` — تعذّر ملف Excel (${excelErr})، وملف JSON الأساسي سليم.`;
+        if (skipped.length || excelErr) line.style.color = 'var(--warn, #b26b00)';
         m.foot.append(h('button', { class: 'btn primary', onclick: m.close }, 'تم'));
         toast('تمت النسخة الاحتياطية', 'ok');
       } catch (e) {
