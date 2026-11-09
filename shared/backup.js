@@ -76,7 +76,9 @@ export function runBackup({ excel = true } = {}) {
           window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet([['الجدول', 'عدد السجلات'], ...counts, [], ['التاريخ', fmt.datetime(stamp)], ['بواسطة', meta.created_by], ['الإصدار', VERSION]]), 'الفهرس');
           for (const [name, rows] of Object.entries(data)) {
             if (!rows.length) continue;
-            const flat = rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v !== null && typeof v === 'object' ? JSON.stringify(v) : v])));
+            // خلية Excel لا تتسع لأكثر من 32,767 حرفًا (صور الشعار والترويسة وبعض سجلات المراجعة) — تُقتطع في ملف Excel فقط، وتبقى كاملة في ملف JSON
+            const cell = (v) => { const t = v !== null && typeof v === 'object' ? JSON.stringify(v) : v; return typeof t === 'string' && t.length > 32000 ? t.slice(0, 200) + ` …[مقتطع: ${t.length.toLocaleString('en')} حرف — النص كامل في ملف JSON]` : t; };
+            const flat = rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, cell(v)])));
             window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(flat), name.replace(/^core\./, '').replace(/^accounting\./, 'acc_').slice(0, 31));
           }
           window.XLSX.writeFile(wb, `erp-backup-${tag}.xlsx`);
