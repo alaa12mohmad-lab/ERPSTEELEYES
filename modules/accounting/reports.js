@@ -642,10 +642,11 @@ export function renderIntercompany(el) {
   const asOf = dateInput(today());
   const go = frame(el, [h('span', {}, 'في'), asOf, h('span', { class: 'help' }, 'كل الشركات')], async (out) => {
     const cos = allIds();
-    const [rec, amts, { data: sis }] = await Promise.all([
+    const [rec, amts, { data: sis }, mixed] = await Promise.all([
       rpc('intercompany_reconciliation', { p_companies: cos, p_as_of: asOf.value }, 'accounting'),
       rpc('intercompany_amounts', { p_companies: cos, p_from: asOf.value, p_to: asOf.value }, 'accounting'),
       core.from('parties').select('code, name, sister_company_id, is_customer, is_supplier').not('sister_company_id', 'is', null).eq('status', 'active'),
+      rpc('intercompany_mixed_entries', { p_companies: cos }, 'accounting'),
     ]);
     const nm = (id) => state.companyName(id);
     const side = (v) => (Number(v) > 0 ? 'لها (مدين)' : Number(v) < 0 ? 'عليها (دائن)' : '—');
@@ -669,6 +670,12 @@ export function renderIntercompany(el) {
         h('thead', {}, h('tr', {}, ['الشركة', 'على الشركة', 'الحساب', 'الرصيد'].map((t) => h('th', {}, t)))),
         h('tbody', {}, bal.map((x) => h('tr', { style: { cursor: 'default' } }, h('td', {}, nm(x.company_id)), h('td', {}, nm(x.sister_company_id)),
           h('td', {}, `${x.code} — ${x.name}`), h('td', { class: neg(x.net) }, N(x.net) + ' ', h('span', { class: 'help' }, side(x.net))))))))),
+      mixed.length ? h('div', { class: 'section-title' }, `قيود مختلطة تحتاج مراجعة (${mixed.length})`) : '',
+      mixed.length ? h('div', { class: 'card' }, h('p', { class: 'help', style: { margin: '0 0 8px' } },
+        'قيود فيها طرف شقيق مع عميل أو مورد خارجي، وسطر إيراد أو مصروف بلا طرف: لا يُعرف أي جزء منه بين الشركات، فلا يُستبعد تلقائيًا. ',
+        'الحل: اكتب الطرف على سطر الإيراد أو المصروف الخاص بالشقيقة، أو افصل القيد إلى قيدين.'),
+        h('table', { class: 'grid report' }, h('tbody', {}, mixed.map((x) => h('tr', { onclick: () => openEntry(x.entry_id, { onChange: go }) },
+          h('td', {}, h('b', { class: 'ltr' }, x.entry_ref)), h('td', {}, nm(x.company_id)), h('td', {}, x.entry_date), h('td', {}, x.description)))))) : '',
       (sis || []).length ? h('p', { class: 'help', style: { marginTop: '10px' } }, 'الأطراف المعلَّمة شركات شقيقة: ' + sis.map((p) => `${p.name} (${nm(p.sister_company_id)})`).join('، ')) : '');
     return { name: 'مطابقة بين الشركات', print: { period: `في ${asOf.value}` },
       aoa: [['الشركة أ', 'رصيدها على ب', 'الشركة ب', 'رصيدها على أ', 'الفرق'], ...rec.map((r) => [nm(r.company_a), Number(r.a_net), nm(r.company_b), Number(r.b_net), Number(r.difference)])] };

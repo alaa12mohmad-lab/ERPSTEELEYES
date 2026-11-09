@@ -1,6 +1,7 @@
 // شاشة بيانات أساسية عامة: قائمة + بحث + فلترة + إضافة/تعديل + أرشفة/إلغاء + استيراد/تصدير Excel
 // كل قسم يعرّف شاشته بإعدادات فقط، بدون تكرار كود
 import { core, db, errMsg, updateRow, insertRows } from './sb.js';
+import { readWorkbook } from './xlsx-safe.js';
 import { h, modal, toast, askReason, fmt, statusBadge } from './ui.js';
 import { state } from './state.js';
 
@@ -264,7 +265,7 @@ export function renderMaster(container, cfg) {
       preview);
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files[0]; if (!file) return;
-      const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const wb = await readWorkbook(file);
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const raw = window.XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
       parsed = raw.map((r, i) => {

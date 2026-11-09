@@ -1,5 +1,6 @@
 // مطابقة البنك: رفع كشف الحساب (Excel/CSV)، والمطابقة التلقائية واليدوية مع قيود حساب البنك، وتسجيل البنود الموجودة في البنك وغير المسجّلة في الدفاتر
 import { acc, rpc } from '../../shared/sb.js';
+import { readWorkbook } from '../../shared/xlsx-safe.js';
 import { h, fmt, modal, toast, askReason } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { norm } from '../../shared/combo.js';
@@ -182,7 +183,7 @@ export function renderBank(el) {
     let rows = []; let headIdx = 0; let map = {};
     file.onchange = async () => {
       const f = file.files[0]; if (!f) return;
-      const wb = window.XLSX.read(await f.arrayBuffer(), { cellDates: false });
+      const wb = await readWorkbook(f, { cellDates: false });
       rows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
       // صف العناوين: أول صف يحتوي «تاريخ» وكلمة أخرى من العناوين المعروفة
       headIdx = Math.max(0, rows.findIndex((r) => r.some((c) => /تاريخ|date/i.test(String(c))) && r.filter((c) => String(c).trim()).length >= 3));

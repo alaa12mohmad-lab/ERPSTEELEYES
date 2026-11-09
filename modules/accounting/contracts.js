@@ -273,8 +273,9 @@ export async function contractForm(c, done, prefill = null) {
     if (miss.length) { err.textContent = 'ناقص: ' + miss.map((x) => x[1]).join('، '); err.style.display = ''; return; }
     if (row.advance_amount > 0 && !row.advance_recovery_pct) { err.textContent = 'حدد نسبة استرداد الدفعة المقدمة'; err.style.display = ''; return; }
     save.disabled = true;
-    const q = c ? acc.from('contracts').update(row).eq('id', c.id) : acc.from('contracts').insert(row).select('id').single();
-    const { data: saved, error } = await q;
+    let saved = null, error = null;
+    if (!c && prefill?.saveWith) { try { saved = { id: await prefill.saveWith(row) }; } catch (e) { error = e; } }
+    else ({ data: saved, error } = await (c ? acc.from('contracts').update(row).eq('id', c.id) : acc.from('contracts').insert(row).select('id').single()));
     save.disabled = false;
     if (error) { err.textContent = /contracts_no_uq/.test(error.message) ? 'رقم العقد مستخدم سابقًا في هذه الشركة' : error.message; err.style.display = ''; return; }
     toast(c ? 'عُدّل العقد' : 'سُجّل العقد', 'ok'); m.close(); done(saved?.id);

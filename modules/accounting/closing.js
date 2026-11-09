@@ -1,6 +1,7 @@
 // إقفال السنة: قيد إقفال بتاريخ 31/12 يصفّر الإيرادات والمصروفات في حساب الأرباح المحتجزة
+// قفل الفترات: لا تسجيل ولا تعديل ولا إلغاء ولا حذف لقيد بتاريخ حتى تاريخ القفل (للمدير، بسبب مكتوب)
 import { acc, rpc } from '../../shared/sb.js';
-import { h, fmt, toast, confirmDialog } from '../../shared/ui.js';
+import { h, fmt, toast, confirmDialog, askReason } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { loadLookups, picker, companySelect } from './lookups.js';
 import { openEntry } from './register.js';
@@ -10,8 +11,9 @@ export function renderClosing(el) {
   const coSel = companySelect((v) => { co = v; build(); });
   const accSlot = h('div', { style: { minWidth: '260px' } });
   const out = h('div');
+  const lockBox = h('div', { class: 'card', style: { marginBottom: '12px' } });
   let pk;
-  el.replaceChildren(
+  el.replaceChildren(lockBox,
     h('div', { class: 'card', style: { marginBottom: '12px' } },
       h('div', { class: 'toolbar' }, h('label', {}, 'الشركة '), coSel, h('label', {}, 'حساب الإقفال '), accSlot),
       h('p', { class: 'help', style: { margin: '8px 0 0' } },
@@ -20,7 +22,33 @@ export function renderClosing(el) {
         'لتعديل سنة مقفلة: افتح قيد الإقفال وألغِه، ثم عدّل، ثم أقفل السنة من جديد.')),
     out);
 
+  // قفل الفترات
+  async function drawLock() {
+    const { data } = await acc.from('period_locks').select('*').eq('company_id', co).maybeSingle();
+    const active = data && data.status === 'active';
+    const admin = state.profile?.is_admin;
+    const date = h('input', { class: 'input', type: 'date', value: active ? data.locked_until : '', style: { width: 'auto' } });
+    const set = async (until) => {
+      const reason = await askReason(until ? `قفل الفترة حتى ${until}` : 'فتح الفترة المقفلة', { ok: until ? 'قفل' : 'فتح', note: until ? 'مثال: تقديم إقرار الربع الأول، أو إصدار القوائم المالية' : 'مثال: تصحيح طلبه المراجع — يُسجَّل في سجل المراجعة' });
+      if (!reason) return;
+      try { await rpc('set_period_lock', { p_company: co, p_until: until, p_reason: reason }, 'accounting'); toast(until ? `أُقفلت الفترة حتى ${until}` : 'فُتحت الفترة', 'ok'); drawLock(); }
+      catch (e) { toast(e.message, 'bad'); }
+    };
+    lockBox.replaceChildren(
+      h('div', { class: 'section-title', style: { marginTop: 0 } }, 'قفل الفترات'),
+      h('div', { class: 'toolbar' },
+        active ? h('span', { class: 'badge warn' }, `مقفلة حتى ${data.locked_until}`) : h('span', { class: 'badge' }, 'لا توجد فترة مقفلة'),
+        active ? h('span', { class: 'help' }, `السبب: ${data.reason}`) : null, h('div', { class: 'grow' }),
+        admin ? h('label', {}, 'قفل حتى') : null, admin ? date : null,
+        admin ? h('button', { class: 'btn primary', onclick: () => { if (!date.value) return toast('اختر تاريخ القفل', 'bad'); set(date.value); } }, active ? 'تغيير القفل' : 'قفل') : null,
+        admin && active ? h('button', { class: 'btn ghost', onclick: () => set(null) }, 'فتح الفترة') : null),
+      h('p', { class: 'help', style: { margin: '8px 0 0' } },
+        'بعد تقديم إقرار الضريبة أو إصدار القوائم: أقفل الفترة حتى آخر يوم فيها، فلا يُسجَّل أو يُعدَّل أو يُلغى أو يُحذف أي قيد بتاريخ قبله من أي شاشة أو استيراد. ',
+        admin ? 'الفتح بسبب مكتوب، ويبقى أثره في سجل المراجعة.' : 'القفل والفتح للمدير فقط.'));
+  }
+
   async function build() {
+    drawLock();
     out.replaceChildren(h('div', { class: 'empty' }, 'جارٍ التحميل…'));
     const lk = await loadLookups(co);
     const eq = lk.postable.filter((a) => a.row.account_type === 'equity');

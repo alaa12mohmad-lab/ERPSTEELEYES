@@ -2,6 +2,7 @@
 //   كل صف = سطر قيد. الصفوف التي لها «رقم القيد» نفسه = قيد واحد. يُحفظ القيد بقواعد صفحة القيود نفسها تمامًا.
 //   يُسجَّل رقم القيد كمرجع: القيد المستورد سابقًا يُتخطّى (يمكن رفع الملف نفسه مرة أخرى بعد تصحيح الخطأ)
 import { acc, rpc } from '../../shared/sb.js';
+import { readWorkbook } from '../../shared/xlsx-safe.js';
 import { h, fmt, toast } from '../../shared/ui.js';
 import { norm } from '../../shared/combo.js';
 import { loadLookups, companySelect } from './lookups.js';
@@ -73,7 +74,7 @@ export function renderImport(el) {
     const f = file.files[0]; if (!f) return;
     out.replaceChildren(h('div', { class: 'empty' }, 'جارٍ قراءة الملف…'));
     try {
-      const wb = window.XLSX.read(await f.arrayBuffer(), { cellDates: false });   // التواريخ كأرقام Excel (التحويل إلى Date يُزيح يومًا حسب المنطقة الزمنية)
+      const wb = await readWorkbook(f, { cellDates: false });   // التواريخ كأرقام Excel (التحويل إلى Date يُزيح يومًا حسب المنطقة الزمنية)
       const ws = wb.Sheets[wb.SheetNames[0]];
       const aoa = window.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
       parsed = await parse(aoa);

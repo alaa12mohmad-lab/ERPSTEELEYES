@@ -300,7 +300,7 @@ export async function salesEditor(opts = {}) {
   // الأزرار
   const run = async (fn, ok) => { err.style.display = 'none'; try { const r = await fn(); if (ok) toast(ok, 'ok'); return r ?? true; } catch (e) { err.textContent = e.message; err.style.display = ''; return null; } };
   const save = async (submit) => {
-    const r = await run(() => rpc('save_sales_invoice', { p: payload(), p_preview: false }, 'accounting'));
+    const r = await run(() => (opts.saveWith && !inv ? opts.saveWith(payload()) : rpc('save_sales_invoice', { p: payload(), p_preview: false }, 'accounting')));
     if (!r) return;
     if (opts.onSaved && !inv) { try { await opts.onSaved(r.id); } catch (e) { toast(e.message, 'bad'); } }
     if (submit) { if (!(await run(() => rpc('submit_sales_invoice', { p_id: r.id }, 'accounting'), 'أُرسلت للاعتماد — تجدها في القيود المقترحة'))) { inv = { ...(inv || {}), id: r.id, state: 'draft' }; done(); return; } }

@@ -5,7 +5,7 @@ import { brand, BRAND_KEYS, loadBranding, logoEl, hijri } from '../../shared/bra
 
 const KEYS = {
   ...BRAND_KEYS,
-  idle: 'security.idle_minutes', mfa: 'security.require_mfa_for_admins', vat: 'vat.rate',
+  idle: 'security.idle_minutes', mfa: 'security.require_mfa_for_admins', vat: 'vat.rate', del: 'accounting.allow_hard_delete',
 };
 const DESC = {
   'app.name': 'اسم النظام الظاهر في الشاشات والطباعة', 'app.subtitle': 'السطر الفرعي تحت اسم النظام',
@@ -13,6 +13,7 @@ const DESC = {
   'app.announcement': 'رسالة إعلان تظهر لكل المستخدمين في الصفحة الرئيسية', 'print.hijri': 'إظهار التاريخ الهجري بجانب الميلادي في الطباعة',
   'security.idle_minutes': 'الخروج التلقائي بعد عدم النشاط (بالدقائق) — 0 = بدون', 'security.require_mfa_for_admins': 'إلزام التحقق بخطوتين لحسابات المدير',
   'vat.rate': 'نسبة ضريبة القيمة المضافة',
+  'accounting.allow_hard_delete': 'السماح بالحذف النهائي للقيود (يُوقف بعد بدء العمل الفعلي؛ ويبقى الإلغاء)',
 };
 
 // تصغير صورة الشعار إلى 256 بكسل كحد أقصى وحفظها داخل الإعدادات (بدون رفع ملفات)
@@ -50,6 +51,7 @@ export async function renderSystem(el) {
   const hij = h('input', { type: 'checkbox', checked: val(KEYS.hijri, false) === true });
   const idle = h('input', { class: 'input', type: 'number', min: 0, max: 480, value: val(KEYS.idle, 30), style: { width: '100px' } });
   const mfa = h('input', { type: 'checkbox', checked: val(KEYS.mfa, false) === true });
+  const noDel = h('input', { type: 'checkbox', checked: val(KEYS.del, true) === false });
   const vat = h('input', { class: 'input', type: 'number', step: '0.01', min: 0, max: 100, value: Math.round(Number(val(KEYS.vat, 0.15)) * 10000) / 100, style: { width: '100px' } });
   const err = h('p', { class: 'notice bad', style: { display: 'none' } });
 
@@ -84,7 +86,7 @@ export async function renderSystem(el) {
     const want = {
       [KEYS.name]: name.value.trim(), [KEYS.subtitle]: sub.value.trim(), [KEYS.letter]: letter.value.trim() || 'م', [KEYS.logo]: logo,
       [KEYS.announcement]: annText.value.trim() ? { text: annText.value.trim(), level: annLevel.value, until: annUntil.value || null } : null,
-      [KEYS.hijri]: hij.checked, [KEYS.idle]: Math.max(0, Math.round(Number(idle.value) || 0)), [KEYS.mfa]: mfa.checked,
+      [KEYS.hijri]: hij.checked, [KEYS.idle]: Math.max(0, Math.round(Number(idle.value) || 0)), [KEYS.mfa]: mfa.checked, [KEYS.del]: !noDel.checked,
       [KEYS.vat]: Math.round(vr * 100) / 10000,
     };
     try {
@@ -121,7 +123,9 @@ export async function renderSystem(el) {
     card('الأمان',
       h('div', { class: 'form-grid' }, F('الخروج التلقائي بعد عدم النشاط (دقيقة)', idle, '0 = بدون خروج تلقائي')),
       h('label', { class: 'check' }, mfa, ' إلزام حسابات المدير بالتحقق بخطوتين'),
-      h('p', { class: 'help' }, '⚠️ فعّل التحقق بخطوتين لحسابك أولًا (من قائمة المستخدم) قبل إلزامه، وإلا ستُطلب منك إعداده عند الدخول التالي.')),
+      h('p', { class: 'help' }, '⚠️ فعّل التحقق بخطوتين لحسابك أولًا (من قائمة المستخدم) قبل إلزامه، وإلا ستُطلب منك إعداده عند الدخول التالي.'),
+      h('label', { class: 'check' }, noDel, ' إيقاف الحذف النهائي للقيود (يبقى «إلغاء القيد» فقط)'),
+      h('p', { class: 'help' }, 'فعّله بعد بدء العمل الفعلي: المراجعون لا يقبلون فراغات في ترقيم القيود. القيد الخطأ يُلغى ويبقى برقمه وسببه.')),
     card('الضريبة',
       h('div', { class: 'form-grid' }, F('نسبة ضريبة القيمة المضافة (%)', vat, 'تُستخدم في حساب الفواتير والمستخلصات الجديدة فقط'))),
     err,

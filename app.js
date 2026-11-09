@@ -33,7 +33,7 @@ const root = document.getElementById('app');
 
 async function boot() {
   const { data } = await sb.auth.getSession();
-  if (!data.session) return renderLogin(root, afterLogin);
+  if (!data.session) { renderLogin(root, afterLogin); idleLogoutNotice(); return; }
   afterLogin();
 }
 
@@ -52,7 +52,9 @@ async function afterLogin() {
 }
 
 sb.auth.onAuthStateChange((event) => {
-  if (event === 'SIGNED_OUT') { stopIdle(); shell = null; renderLogin(root, afterLogin); idleLogoutNotice(); }
+  // الخروج: إعادة تحميل الصفحة بالكامل حتى تُمسح كل البيانات المخزنة في الذاكرة (قوائم الحسابات والمشاريع والموظفين…)
+  //   فلا يرى المستخدم التالي على الجهاز نفسه شيئًا من بيانات السابق
+  if (event === 'SIGNED_OUT') { stopIdle(); shell = null; root.replaceChildren(); location.replace(location.pathname + location.search); }
 });
 
 // الأقسام المتاحة للمستخدم (مبنية + مفعّلة + صلاحية)

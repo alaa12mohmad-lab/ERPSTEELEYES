@@ -15,9 +15,13 @@ export const BACKUP_TABLES = [
   ['core', 'units'], ['core', 'categories'], ['core', 'cost_centers'], ['core', 'parties'], ['core', 'projects'], ['core', 'project_companies'],
   ['core', 'locations'], ['core', 'employees'], ['core', 'equipment'], ['core', 'price_kinds'], ['core', 'prices'], ['core', 'attachments'],
   ['accounting', 'accounts'], ['accounting', 'batches'], ['accounting', 'journal_entries'], ['accounting', 'journal_lines'],
-  ['accounting', 'entry_versions'], ['accounting', 'proposed_entries'], ['accounting', 'deleted_entries'],
+  ['accounting', 'entry_versions'], ['accounting', 'proposed_entries'], ['accounting', 'deleted_entries'], ['accounting', 'period_locks'],
+  ['accounting', 'bank_statements'], ['accounting', 'bank_statement_lines'], ['accounting', 'cash_commitments'],
+  ['accounting', 'contracts'], ['accounting', 'contract_amendments'], ['accounting', 'contract_bills'], ['accounting', 'sales_invoices'],
+  ['accounting', 'quotations'], ['core', 'company_letterheads'],
   ['core', 'audit_log'],
 ];
+// ملاحظة: ملفات المرفقات (Storage) ليست في هذه النسخة ولا في النسخة الليلية — النسخة لبيانات قاعدة البيانات فقط
 
 const LAST_KEY = 'erp-last-backup';
 export const lastBackup = () => { const v = store.get(LAST_KEY, null); return v ? new Date(v) : null; };
@@ -28,7 +32,8 @@ async function fetchAll(schema, table, onPage) {
   for (let from = 0; ; from += size) {
     const { data, error } = await db(schema).from(table).select('*').range(from, from + size - 1);
     if (error) {
-      if (/does not exist|schema cache|permission/i.test(error.message)) return null;   // جدول غير موجود في هذا الإصدار
+      // جدول غير موجود في إصدار قاعدة البيانات الحالي يُتخطّى ويُذكر؛ أما خطأ الصلاحية أو غيره فيُوقف النسخة (لا نجاح ناقص)
+      if (/does not exist|schema cache|Could not find the table/i.test(error.message)) return null;
       throw new Error(`${schema}.${table}: ${error.message}`);
     }
     out.push(...data); onPage?.(out.length);
@@ -49,22 +54,22 @@ export function runBackup({ excel = true } = {}) {
     const m = modal({ title: 'نسخة احتياطية', size: 'narrow', onClose: () => resolve(done) });
     const bar = h('div', { class: 'bk-bar' }, h('i'));
     const line = h('div', { class: 'help' }, 'جارٍ التجهيز…');
-    m.body.append(h('p', { style: { marginTop: 0 } }, 'يجري تحميل جميع بيانات النظام. لا تغلق الصفحة حتى تكتمل الملفات.'), bar, line);
+    m.body.append(h('p', { style: { marginTop: 0 } }, 'يجري تحميل جميع جداول قاعدة البيانات (دون ملفات المرفقات). لا تغلق الصفحة حتى تكتمل الملفات.'), bar, line);
     (async () => {
       const stamp = new Date();
       const tag = stamp.toISOString().slice(0, 16).replace(/[:T]/g, '-');
-      const data = {}; const counts = []; let total = 0;
+      const data = {}; const counts = []; let total = 0; const skipped = [];
       try {
         for (let i = 0; i < BACKUP_TABLES.length; i++) {
           const [s, t] = BACKUP_TABLES[i];
           line.textContent = `${s}.${t}…`;
           bar.firstChild.style.width = Math.round((i / BACKUP_TABLES.length) * 100) + '%';
           const rows = await fetchAll(s, t, (n) => { line.textContent = `${s}.${t} — ${n} سجل`; });
-          if (rows === null) continue;
+          if (rows === null) { skipped.push(`${s}.${t}`); continue; }
           data[`${s}.${t}`] = rows; counts.push([`${s}.${t}`, rows.length]); total += rows.length;
         }
         bar.firstChild.style.width = '100%';
-        const meta = { app: CONFIG.APP_NAME, version: VERSION, created_at: stamp.toISOString(), created_by: state.profile?.email || '', tables: Object.fromEntries(counts) };
+        const meta = { app: CONFIG.APP_NAME, version: VERSION, created_at: stamp.toISOString(), created_by: state.profile?.email || '', tables: Object.fromEntries(counts), skipped, note: 'نسخة إدارية لبيانات قاعدة البيانات (لا تشمل ملفات المرفقات). الاسترجاع الكامل من النسخة الليلية.' };
         download(`erp-backup-${tag}.json`, new Blob([JSON.stringify({ meta, data })], { type: 'application/json' }));
         if (excel && window.XLSX) {
           const wb = window.XLSX.utils.book_new();
@@ -78,7 +83,10 @@ export function runBackup({ excel = true } = {}) {
         }
         store.set(LAST_KEY, stamp.toISOString());
         done = true;
-        line.textContent = `اكتملت النسخة: ${counts.length} جدولًا، ${total.toLocaleString('en')} سجلًا — الملفات في مجلد التنزيلات.`;
+        line.textContent = `اكتملت النسخة: ${counts.length} جدولًا، ${total.toLocaleString('en')} سجلًا — الملفات في مجلد التنزيلات.`
+          + (skipped.length ? ` (جداول غير موجودة في قاعدة البيانات بعد: ${skipped.join('، ')} — شغّل ملفات التحديث)` : '')
+          + ' ملفات المرفقات غير مشمولة.';
+        if (skipped.length) line.style.color = 'var(--warn, #b26b00)';
         m.foot.append(h('button', { class: 'btn primary', onclick: m.close }, 'تم'));
         toast('تمت النسخة الاحتياطية', 'ok');
       } catch (e) {

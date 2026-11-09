@@ -12,7 +12,9 @@ rpcListeners.add((fn) => { if (MUTATE.has(fn)) for (const lk of cache.values()) 
 export function clearLookups() { cache.clear(); }
 
 export async function loadLookups(company, { force = false } = {}) {
-  if (!force && cache.has(company)) return cache.get(company);
+  // المفتاح يشمل المستخدم: قوائم مستخدم لا تُعاد لغيره أبدًا (احتياطًا فوق إعادة تحميل الصفحة عند الخروج)
+  const key = `${state.profile?.id || ''}|${company}`;
+  if (!force && cache.has(key)) return cache.get(key);
   const [accounts, parties, employees, projects, costCenters, equipment, settings] = await Promise.all([
     acc.from('accounts').select('*').eq('company_id', company).eq('status', 'active').order('code'),
     core.from('parties').select('id, code, name, is_customer, is_supplier, tax_number').eq('status', 'active').order('code'),
@@ -47,7 +49,7 @@ export async function loadLookups(company, { force = false } = {}) {
   lk.byId = (list, id) => lk[list].find((o) => o.id === id);
   buildPartyCombos(lk);
   attachBalances(lk);
-  cache.set(company, lk);
+  cache.set(key, lk);
   return lk;
 }
 

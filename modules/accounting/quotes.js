@@ -277,27 +277,39 @@ async function convert(q, kind, closed) {
     } catch (e) { toast(e.message, 'bad'); return; }
   }
   const base = Number(q.subtotal) - Number(q.discount);
-  const link = async (id) => {
-    if (!id) return;
-    await rpc('link_quotation', { p_id: q.id, p_kind: kind, p_target: id }, 'accounting');
-    toast(`رُبط العرض ${q.quote_no} بما حُوّل إليه`, 'ok');
-  };
   closed();
   if (kind === 'invoice') {
-    // الخصم يُوزَّع على أسعار البنود بالنسبة نفسها (لا تقبل الفاتورة أسطرًا سالبة)
-    const f = Number(q.subtotal) ? base / Number(q.subtotal) : 1;
-    const items = q.items.map((x) => ({ description: [x.description, x.unit ? `(${x.unit})` : ''].filter(Boolean).join(' '), qty: Number(x.qty), price: Math.round(Number(x.price) * f * 100) / 100 }));
-    // فرق التقريب يُحمَّل على بند كميته 1 إن وُجد (ليطابق الإجمالي العرض بالهللة)، وإلا على آخر بند
-    const diff = Math.round((base - items.reduce((s, x) => s + Math.round(x.qty * x.price * 100) / 100, 0)) * 100) / 100;
-    if (Math.abs(diff) >= 0.01) {
-      const t = items.find((x) => x.qty === 1) || items[items.length - 1];
-      t.price = Math.round((t.price + diff / t.qty) * 100) / 100;
-    }
-    if (Number(q.discount)) toast('وُزّع خصم العرض على أسعار البنود — راجع الإجمالي قبل الحفظ', '');
-    salesEditor({ company_id: q.company_id, prefill: { party_id: party, project_id: q.project_id, items, no_vat: Number(q.vat_rate) === 0, notes: `من عرض السعر ${ref(q)}` }, onSaved: link });
+    const items = distributeDiscount(q.items, Number(q.subtotal), base)
+      .map((x) => ({ description: [x.description, x.unit ? `(${x.unit})` : ''].filter(Boolean).join(' '), qty: x.qty, price: x.price }));
+    if (Number(q.discount)) toast('وُزّع خصم العرض على أسعار البنود (بفصل وحدة واحدة عند الحاجة) ليطابق الإجمالي العرض بالهللة', '');
+    // الحفظ والربط في عملية واحدة على الخادم: إما الاثنان أو لا شيء، والتكرار مرفوض
+    salesEditor({ company_id: q.company_id, prefill: { party_id: party, project_id: q.project_id, items, no_vat: Number(q.vat_rate) === 0, notes: `من عرض السعر ${ref(q)}` },
+      saveWith: (p) => rpc('convert_quotation_invoice', { p_quote: q.id, p_invoice: p }, 'accounting') });
   } else {
-    contractForm(null, link, { company_id: q.company_id, kind: 'po', title: q.title, contract_value: base, project_id: q.project_id, party_id: party, notes: `من عرض السعر ${ref(q)}` });
+    contractForm(null, () => toast(`رُبط العرض ${q.quote_no} بأمر الشراء`, 'ok'), { company_id: q.company_id, kind: 'po', title: q.title, contract_value: base, project_id: q.project_id, party_id: party,
+      notes: `من عرض السعر ${ref(q)}`, saveWith: (row) => rpc('convert_quotation_po', { p_quote: q.id, p_contract: row }, 'accounting') });
   }
+}
+
+// توزيع خصم العرض على أسعار البنود (الفاتورة لا تقبل أسطرًا سالبة) بحيث يساوي الإجمالي المطلوب بالهللة:
+//   السعر يُضرب في نسبة الصافي، ثم يُحمَّل فرق التقريب على بند كميته 1، وإلا تُفصل وحدة واحدة من آخر بند في سطر مستقل يحمل الفرق
+export function distributeDiscount(srcItems, subtotal, target) {
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const f = subtotal ? target / subtotal : 1;
+  const items = srcItems.map((x) => ({ ...x, qty: Number(x.qty), price: r2(Number(x.price) * f) }));
+  const total = () => r2(items.reduce((s, x) => s + r2(x.qty * x.price), 0));
+  let diff = r2(target - total());
+  if (Math.abs(diff) >= 0.01) {
+    let t = items.find((x) => x.qty === 1);
+    if (!t) {
+      const last = items[items.length - 1];
+      if (last.qty > 1) { last.qty = r2(last.qty - 1); t = { ...last, qty: 1 }; items.push(t); }
+      else t = last;
+    }
+    diff = r2(target - total());
+    t.price = r2(t.price + diff / t.qty);
+  }
+  return items;
 }
 
 // ---------------------------------------------------------------------
