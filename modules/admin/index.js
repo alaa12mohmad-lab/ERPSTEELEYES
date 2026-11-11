@@ -8,7 +8,7 @@ import { renderSystem } from './system.js';
 async function fetchAll() {
   const [roles, modules, sensitive, projects, employees] = await Promise.all([
     core.from('roles').select('*').eq('status', 'active').order('created_at'),
-    core.from('modules').select('*').eq('status', 'active').order('sort_order'),
+    core.from('modules').select('*').eq('status', 'active').neq('code', 'payments').order('sort_order'),   // طلبات التحويل من صلاحيات المستخدم نفسه لا من الأدوار
     core.from('sensitive_items').select('*').eq('status', 'active').order('created_at'),
     core.from('v_projects').select('id, code, name, lead_company_id, companies').eq('status', 'active').order('code'),
     core.from('employees').select('id, employee_no, full_name, company_id').eq('status', 'active').order('full_name'),
@@ -88,6 +88,38 @@ async function renderUsers(el) {
     return { ui, read };
   }
 
+  // طلبات التحويل: يقدّم، وحد الموافقة، ومدير على أي مشاريع (لأي مستخدم مهما كانت وظيفته)
+  function paymentFields(u) {
+    if (!u) return { ui: h('div', { class: 'field wide' }, h('div', { class: 'help' }, 'صلاحيات طلبات التحويل تُحدَّد بعد إنشاء الحساب (افتح المستخدم مرة أخرى).')), save: async () => {} };
+    const canReq = h('input', { type: 'checkbox', checked: !!u.pay_can_request });
+    const mode = h('select', { class: 'input', style: { width: 'auto' } },
+      h('option', { value: 'none', selected: !u.pay_unlimited && u.pay_limit == null }, 'لا يعتمد'),
+      h('option', { value: 'limit', selected: !u.pay_unlimited && u.pay_limit != null }, 'يعتمد حتى مبلغ'),
+      h('option', { value: 'all', selected: !!u.pay_unlimited }, 'يعتمد بلا حد (المدير العام)'));
+    const limit = h('input', { class: 'input', type: 'number', min: 0, step: '0.01', value: u.pay_limit ?? '', placeholder: 'المبلغ', style: { width: '140px' } });
+    const showLimit = () => { limit.style.display = mode.value === 'limit' ? '' : 'none'; };
+    mode.onchange = showLimit; showLimit();
+    const projBox = h('div', { class: 'checks', style: { maxHeight: '160px', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '8px', padding: '8px' } },
+      h('span', { class: 'help' }, 'جارٍ التحميل…'));
+    core.from('project_managers').select('project_id').eq('user_id', u.id).eq('status', 'active').then(({ data }) => {
+      const mine = new Set((data || []).map((r) => r.project_id));
+      projBox.replaceChildren(...(meta.projects.length ? meta.projects.map((p) => h('label', { class: 'check' },
+        h('input', { type: 'checkbox', value: p.id, checked: mine.has(p.id) }), p.code + ' — ' + p.name)) : [h('span', { class: 'help' }, 'لا توجد مشاريع')]));
+    });
+    const ui = h('div', { class: 'field wide' },
+      h('div', { class: 'section-title', style: { marginTop: '6px' } }, 'طلبات التحويل'),
+      h('label', { class: 'check' }, canReq, 'يقدّم طلبات تحويل (لأي مشروع في شركاته)'),
+      h('div', { class: 'toolbar', style: { margin: '8px 0' } }, h('label', {}, 'الموافقة على الطلبات'), mode, limit, h('span', { class: 'help' }, 'ريال')),
+      h('label', {}, 'مدير المشروع على (يعتمد طلبات هذه المشاريع في حدود مبلغه، وما يزيد يذهب للمدير العام)'), projBox);
+    const save = async (id) => {
+      const lim = mode.value === 'limit' ? Number(limit.value) : null;
+      if (mode.value === 'limit' && !(lim >= 0 && limit.value !== '')) throw new Error('اكتب حد الموافقة');
+      await updateRow('app_users', id, { pay_can_request: canReq.checked, pay_unlimited: mode.value === 'all', pay_limit: lim });
+      await rpc('set_user_managed_projects', { p_user: id, p_project_ids: [...projBox.querySelectorAll('input:checked')].map((i) => i.value) });
+    };
+    return { ui, save };
+  }
+
   function openUser(u) {
     const isNew = !u;
     const m = modal({ title: isNew ? 'مستخدم جديد' : u.full_name, size: 'wide' });
@@ -100,6 +132,7 @@ async function renderUsers(el) {
       meta.employees.map((e) => h('option', { value: e.id, selected: e.id === u?.employee_id }, `${e.full_name} (${e.employee_no} — ${state.companyName(e.company_id)})`)));
     const mfa = h('input', { type: 'checkbox', checked: !!u?.mfa_required });
     const scope = scopeFields(u);
+    const pay = paymentFields(u);
     m.body.append(h('div', { class: 'form-grid' },
       h('div', { class: 'field' }, h('label', { for: 'u_name' }, 'الاسم', h('span', { class: 'req' }, '*')), name),
       h('div', { class: 'field' }, h('label', { for: 'u_email' }, 'البريد الإلكتروني (اسم الدخول)', h('span', { class: 'req' }, '*')), email,
@@ -109,7 +142,8 @@ async function renderUsers(el) {
       h('div', { class: 'field' }, h('label', { for: 'u_role' }, 'الدور'), role),
       h('div', { class: 'field' }, h('label', { for: 'u_emp' }, 'الموظف المرتبط'), emp),
       h('div', { class: 'field' }, h('label', { class: 'check', style: { marginTop: '24px' } }, mfa, 'إلزام التحقق بخطوتين')),
-      u?.is_admin ? h('div', { class: 'field wide' }, h('div', { class: 'notice' }, 'مدير النظام يرى ويدير كل شيء.')) : scope.ui));
+      u?.is_admin ? h('div', { class: 'field wide' }, h('div', { class: 'notice' }, 'مدير النظام يرى ويدير كل شيء.')) : scope.ui,
+      pay.ui));
 
     const save = async () => {
       if (!name.value.trim() || !email.value.trim()) { toast('الاسم والبريد الإلكتروني مطلوبان', 'bad'); return; }
@@ -128,6 +162,7 @@ async function renderUsers(el) {
             ...(u.is_admin ? {} : { all_companies: sc.all_companies, all_projects: sc.all_projects }),
           });
           if (!u.is_admin) await rpc('set_user_scope', { p_user: u.id, p_company_ids: sc.company_ids, p_project_ids: sc.project_ids });
+          await pay.save(u.id);
         }
         toast('تم الحفظ', 'ok'); m.close(); load();
       } catch (e) { toast(e.message, 'bad'); } finally { btn.disabled = false; }

@@ -19,6 +19,7 @@ export function errMsg(error) {
   if (error.code === '42501' || /row-level security|permission denied/i.test(m)) return 'ليس لديك صلاحية لهذه العملية';
   if (error.code === '23514' || /check constraint/i.test(m)) {
     if (/cancel_reason/.test(m)) return 'سبب الإلغاء مطلوب';
+    if (/iban/.test(m)) return 'الآيبان غير صحيح (يبدأ بحرفين ثم أرقام، مثل SA0380000000608010167519)';
     if (/tax/.test(m)) return 'الرقم الضريبي يجب أن يكون 15 رقمًا';
     if (/dates/.test(m)) return 'تاريخ النهاية قبل تاريخ البداية';
     if (/supplier/.test(m)) return 'المعدة المستأجرة تحتاج إلى مورد';

@@ -25,9 +25,10 @@ import { brand, loadBranding, logoEl, activeAnnouncement } from './shared/brandi
 import coreModule from './modules/core/index.js';
 import adminModule from './modules/admin/index.js';
 import accountingModule from './modules/accounting/index.js';
+import paymentsModule from './modules/payments/index.js';
 
 // كل قسم جديد يُضاف هنا فقط
-const MODULES = [accountingModule, coreModule, adminModule];
+const MODULES = [paymentsModule, accountingModule, coreModule, adminModule];
 
 const root = document.getElementById('app');
 

@@ -7,6 +7,8 @@ import { renderMaster, opts } from '../../shared/master.js';
 const PHASES = [['planned', 'مخطط'], ['active', 'جاري'], ['on_hold', 'متوقف'], ['completed', 'منتهي']];
 const phaseLabel = (v) => (PHASES.find((p) => p[0] === v) || [v, v])[1];
 const companyName = (id) => state.companyName(id) || '—';
+const normIban = (v) => String(v || '').replace(/[\s-]/g, '').toUpperCase();
+const IBAN_RX = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/;
 
 // ---------------------------------------------------------------------
 // الشركات المشاركة في المشروع
@@ -205,11 +207,14 @@ export default {
           { key: 'supplier_terms_days', label: 'مدة السداد للمورد (يوم)', type: 'number' },
           { key: 'phone', label: 'الجوال', ltr: true },
           { key: 'contact_person', label: 'الشخص المسؤول' },
+          { key: 'bank_name', label: 'البنك' },
+          { key: 'iban', label: 'الآيبان', ltr: true, help: 'للتحويل البنكي وطلبات التحويل — مثال: SA0380000000608010167519' },
           { key: 'sister_company_id', label: 'شركة شقيقة', type: 'select', options: opts.companies(), placeholder: '— ليس شركة من شركاتنا —',
             help: 'إذا كان هذا الطرف إحدى شركاتنا (مثل عيون الحديد كعميل لريان): تُستبعد تعاملاته من التقارير المجمّعة' },
           { key: 'notes', label: 'ملاحظات', type: 'textarea' },
         ],
-        validate: (v) => (!v.is_customer && !v.is_supplier ? 'حدد: عميل أو مورد أو كلاهما' : v.tax_number && !/^\d{15}$/.test(v.tax_number) ? 'الرقم الضريبي 15 رقمًا' : null),
+        validate: (v) => (!v.is_customer && !v.is_supplier ? 'حدد: عميل أو مورد أو كلاهما' : v.tax_number && !/^\d{15}$/.test(v.tax_number) ? 'الرقم الضريبي 15 رقمًا'
+          : v.iban && !IBAN_RX.test(normIban(v.iban)) ? 'الآيبان غير صحيح (يبدأ بحرفين ثم أرقام، مثل SA03…)' : null),
       }),
     },
     {
@@ -266,6 +271,8 @@ export default {
           { key: 'job_title', label: 'المسمى الوظيفي' },
           { key: 'pay_type', label: 'نوع الأجر', type: 'select', required: true, default: 'monthly', options: opts.list([['monthly', 'راتب شهري'], ['hourly', 'بالساعة']]) },
           { key: 'phone', label: 'الجوال', ltr: true },
+          { key: 'bank_name', label: 'البنك' },
+          { key: 'iban', label: 'الآيبان', ltr: true, help: 'للتحويل البنكي وطلبات التحويل — مثال: SA0380000000608010167519' },
           { key: 'hire_date', label: 'تاريخ التعيين', type: 'date', required: true },
           { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
           { key: 'notes', label: 'ملاحظات', type: 'textarea' },
