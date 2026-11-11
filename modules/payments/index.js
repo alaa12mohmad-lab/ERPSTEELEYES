@@ -18,6 +18,8 @@ const EVENTS = {
   auto_unlink: 'عاد غير مدفوع',
 };
 const LEVEL = { 1: 'مدير المشروع', 2: 'المدير العام' };
+export const BASES = { invoice: 'فاتورة مسجّلة', pending_invoice: 'فاتورة لم تُسجَّل بعد', quote: 'عرض سعر', none: 'بدون مستند' };
+const docText = (r) => (r.basis === 'quote' ? `عرض سعر ${r.quote_no}` : r.invoice_no ? `فاتورة ${r.invoice_no}${r.basis === 'pending_invoice' ? ' (لم تُسجَّل)' : ''}` : '');
 const P = () => state.profile?.payments || {};
 const canRequest = () => !!P().can_request;
 const isApprover = () => !!(P().unlimited || P().limit != null || (P().managed_projects || []).length);
@@ -56,21 +58,24 @@ async function loadRows(filter) {
 function table(rows, { onOpen, select = null, cols = 'all' } = {}) {
   const multi = ids().length > 1;
   const head = [select ? '' : null, 'الرقم', 'التاريخ', 'المستفيد', 'النوع', 'المشروع', 'المبلغ', 'آخر موعد', 'الحالة', cols === 'all' ? 'أين الآن' : 'مقدّم الطلب'].filter((x) => x !== null);
-  return h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
+  const tbl = h('table', { class: 'grid report pr-cards' },
     h('thead', {}, h('tr', {}, head.map((x) => h('th', {}, x)))),
     h('tbody', {}, rows.length ? rows.map((r) => h('tr', { onclick: (e) => { if (e.target.type !== 'checkbox') onOpen(r); } },
       select ? h('td', { style: { width: '32px' } }, select(r)) : null,
       h('td', {}, h('b', { class: 'ltr' }, r.request_no), r.priority === 'urgent' ? h('span', { class: 'badge bad', style: { marginInlineStart: '6px' } }, 'عاجل') : null,
         multi ? h('div', { class: 'help' }, r.company_name) : null),
       h('td', {}, fmt.date(r.request_date)),
-      h('td', {}, r.payee_name, r.invoice_no ? h('div', { class: 'help' }, 'فاتورة ' + r.invoice_no) : null),
+      h('td', {}, r.payee_name, docText(r) ? h('div', { class: 'help' }, docText(r)) : null),
       h('td', {}, KINDS[r.kind]),
       h('td', {}, r.project_code ? `${r.project_code} — ${r.project_name}` : ''),
       h('td', { class: 'num' }, h('b', {}, num(r.amount))),
       h('td', {}, h('span', { class: overdue(r) ? 'badge bad' : '' }, fmt.date(r.due_date))),
       h('td', {}, badge(r.state), r.attachments ? h('span', { class: 'help', title: 'مرفقات' }, ` 📎${r.attachments}`) : null),
       h('td', { class: 'wrap' }, cols === 'all' ? whereNow(r) : r.requester_name)))
-      : h('tr', {}, h('td', { colspan: head.length, class: 'empty' }, 'لا توجد طلبات'))))));
+      : h('tr', {}, h('td', { colspan: head.length, class: 'empty' }, 'لا توجد طلبات'))));
+  // على التليفون يظهر كل طلب بطاقة: اسم العمود بجانب قيمته
+  tbl.querySelectorAll('tbody tr').forEach((tr) => [...tr.children].forEach((td, i) => { if (!td.classList.contains('empty')) td.dataset.label = head[i] || ''; }));
+  return h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, tbl));
 }
 
 function listPage(el, { title, filter, toolbar = [], states = null, extra }) {
@@ -89,7 +94,7 @@ function listPage(el, { title, filter, toolbar = [], states = null, extra }) {
   function draw() {
     const nq = q.value.trim().toLowerCase();
     const list = rows.filter((r) => (!stSel?.value || r.state === stSel.value)
-      && (!nq || [r.request_no, r.payee_name, r.project_code, r.project_name, r.invoice_no, r.requester_name].some((v) => String(v || '').toLowerCase().includes(nq))));
+      && (!nq || [r.request_no, r.payee_name, r.project_code, r.project_name, r.invoice_no, r.quote_no, r.requester_name].some((v) => String(v || '').toLowerCase().includes(nq))));
     put(out, extra ? extra(list, load) : table(list, { onOpen: (r) => openRequest(r.id, load) }));
   }
   stSel?.addEventListener('change', draw);
@@ -200,6 +205,10 @@ async function requestForm(r, done) {
   const bank = h('input', { class: 'input', value: r?.payee_bank || '', placeholder: 'من كارت المستفيد' });
   const iban = h('input', { class: 'input ltr', value: r?.payee_iban || '', placeholder: 'SA…' });
   const invSel = h('select', { class: 'input' });
+  const basis = h('select', { class: 'input' });
+  const invNo = h('input', { class: 'input ltr', value: r?.basis === 'pending_invoice' ? r.invoice_no || '' : '', placeholder: 'رقم فاتورة المورد' });
+  const quoteNo = h('input', { class: 'input ltr', value: r?.quote_no || '', placeholder: 'رقم عرض السعر' });
+  const docVal = h('input', { class: 'input', type: 'number', step: '0.01', min: 0, value: r?.doc_value ?? '' });
   const invHelp = h('div', { class: 'help' });
   const amount = h('input', { class: 'input', type: 'number', step: '0.01', min: 0, value: r?.amount ?? '' });
   const due = h('input', { class: 'input', type: 'date', value: r?.due_date || today() });
@@ -217,6 +226,10 @@ async function requestForm(r, done) {
   const fName = F('اسم المستفيد', pname, { req: true });
   const fInv = F('الفاتورة', invSel, { req: true });
   fInv.append(invHelp);
+  const fBasis = F('أساس التحويل', basis, { help: 'رقم الفاتورة ليس إلزاميًا — التحويل قد يسبق الفاتورة' });
+  const fInvNo = F('رقم الفاتورة', invNo, { req: true });
+  const fQuote = F('رقم عرض السعر', quoteNo, { req: true });
+  const fVal = F('القيمة', docVal, { req: true, help: 'قيمة الفاتورة أو العرض كاملة — مجموع الطلبات عليها لا يتجاوزها' });
   const opt = (x) => ({ id: x.id, code: x.code || '', name: x.name, label: `${x.code ? x.code + ' — ' : ''}${x.name}`, row: x });
   const mk = (list, value, ph, onChange) => combo({ options: list.map(opt), listKey: 'pr-' + ph, value, placeholder: ph, onChange });
 
@@ -230,10 +243,11 @@ async function requestForm(r, done) {
   }
   function drawPayee() {
     const t = ptype.value;
-    if (kind.value === 'invoice' && t !== 'party') { ptype.value = 'party'; return drawPayee(); }
+    const cur0 = basis.value || r?.basis || (t === 'party' ? 'invoice' : 'none');
+    put(basis, Object.entries(BASES).filter(([k]) => k !== 'invoice' || t === 'party').map(([k, x]) => h('option', { value: k, selected: k === (cur0 === 'invoice' && t !== 'party' ? 'none' : cur0) }, x)));
     fPayee.style.display = t === 'other' ? 'none' : '';
     fName.style.display = t === 'other' ? '' : 'none';
-    fInv.style.display = kind.value === 'invoice' ? '' : 'none';
+    showBasis();
     if (t === 'other') { invSel.replaceChildren(); return; }
     const list = t === 'party' ? fd.parties : fd.employees;
     const cur = t === 'party' ? r?.party_id : r?.employee_id;
@@ -247,7 +261,7 @@ async function requestForm(r, done) {
   }
   async function loadInvoices() {
     invSel.replaceChildren(); invHelp.textContent = ''; invoices = [];
-    if (kind.value !== 'invoice' || ptype.value !== 'party' || !pk.payee?.id) return;
+    if (basis.value !== 'invoice' || ptype.value !== 'party' || !pk.payee?.id) return;
     const { data, error } = await acc.rpc('pr_open_invoices', { p_company: coSel.value, p_party: pk.payee.id, p_exclude: r?.id || null });
     if (error) { invHelp.textContent = error.message; return; }
     invoices = data || [];
@@ -261,14 +275,22 @@ async function requestForm(r, done) {
     invHelp.textContent = x ? `قيمة الفاتورة ${num(x.amount)} — الباقي ${num(x.remaining)}${x.due_date ? ' — تستحق ' + fmt.date(x.due_date) : ''}` : '';
     if (x && !amount.value) amount.value = Number(x.remaining) - Number(x.reserved || 0) > 0 ? Number(x.remaining) - Number(x.reserved || 0) : '';
   }
+  function showBasis() {
+    const b = basis.value;
+    fInv.style.display = b === 'invoice' ? '' : 'none';
+    fInvNo.style.display = b === 'pending_invoice' ? '' : 'none';
+    fQuote.style.display = b === 'quote' ? '' : 'none';
+    fVal.style.display = b === 'pending_invoice' || b === 'quote' ? '' : 'none';
+  }
+  basis.onchange = () => { showBasis(); loadInvoices(); };
   invSel.onchange = showInv;
-  ptype.onchange = drawPayee; kind.onchange = drawPayee; coSel.onchange = loadCompany;
+  ptype.onchange = drawPayee; coSel.onchange = loadCompany;
 
   put(m.body,
     r?.last_note ? h('div', { class: 'notice warn', style: { marginBottom: '12px' } }, h('b', {}, 'المطلوب تعديله: '), r.last_note) : null,
     h('div', { class: 'form-grid' },
       F('الشركة التي ستدفع', coSel, { req: true }), F('نوع الطلب', kind, { req: true }),
-      F('المستفيد من', ptype), fPayee, fName, fInv,
+      F('المستفيد من', ptype), fPayee, fName, fBasis, fInv, fInvNo, fQuote, fVal,
       F('المبلغ', amount, { req: true }), F('آخر موعد للتحويل', due, { req: true }), F('الأولوية', prio),
       F('البنك', bank), F('الآيبان', iban, { help: 'يُسحب من كارت المستفيد، ويمكن كتابة حساب آخر لهذا الطلب' }),
       F('المشروع', slot.project), F('مركز التكلفة', slot.cc), F('المعدة', slot.eq),
@@ -282,7 +304,8 @@ async function requestForm(r, done) {
     id: r?.id || null, company_id: coSel.value, kind: kind.value, payee_type: ptype.value,
     party_id: ptype.value === 'party' ? pk.payee?.id || null : null, employee_id: ptype.value === 'employee' ? pk.payee?.id || null : null,
     payee_name: ptype.value === 'other' ? pname.value : null, payee_bank: bank.value, payee_iban: iban.value,
-    invoice_no: kind.value === 'invoice' ? invSel.value || null : null, amount: amount.value === '' ? null : Number(amount.value), due_date: due.value || null,
+    basis: basis.value, invoice_no: basis.value === 'invoice' ? invSel.value || null : basis.value === 'pending_invoice' ? invNo.value : null,
+    quote_no: basis.value === 'quote' ? quoteNo.value : null, doc_value: ['quote', 'pending_invoice'].includes(basis.value) && docVal.value !== '' ? Number(docVal.value) : null, amount: amount.value === '' ? null : Number(amount.value), due_date: due.value || null,
     priority: prio.value, project_id: pk.project?.id || null, cost_center_id: pk.cc?.id || null, equipment_id: pk.eq?.id || null,
     description: desc.value, resubmit_note: note.value, confirm_duplicate: confirm,
   });
@@ -350,7 +373,9 @@ export async function openRequest(id, done) {
     h('div', { class: 'pr-detail' },
       h('table', { class: 'grid report pr-info' }, h('tbody', {},
         row('المستفيد', r.payee_name), row('البنك', r.payee_bank), row('الآيبان', r.payee_iban ? h('span', { class: 'ltr' }, r.payee_iban) : null),
-        row('النوع', KINDS[r.kind]), row('الفاتورة', r.invoice_no ? `${r.invoice_no} — الباقي وقت الطلب ${num(r.invoice_remaining)}` : null),
+        row('النوع', KINDS[r.kind]),
+        row('الأساس', BASES[r.basis] + (r.basis === 'invoice' ? ` ${r.invoice_no} — الباقي وقت الطلب ${num(r.invoice_remaining)}`
+          : r.basis === 'pending_invoice' ? ` ${r.invoice_no} — قيمتها ${num(r.doc_value)}` : r.basis === 'quote' ? ` ${r.quote_no} — قيمته ${num(r.doc_value)}` : '')),
         row('المبلغ', h('b', {}, num(r.amount))), row('آخر موعد', fmt.date(r.due_date)),
         row('المشروع', r.project_code ? `${r.project_code} — ${r.project_name}` : null), row('مركز التكلفة', r.cost_center_name), row('المعدة', r.equipment_name),
         row('البيان', h('div', { class: 'wrap' }, r.description)), row('مقدّم الطلب', `${r.requester_name} — ${fmt.date(r.request_date)}` + (r.submit_round > 1 ? ` (قُدّم ${r.submit_round} مرات)` : '')),
@@ -412,9 +437,9 @@ async function payEntry(r, done) {
   const [{ loadLookups }, { createEditor, emptyLine }] = await Promise.all([import('../accounting/lookups.js'), import('../accounting/editor.js')]);
   const lk = await loadLookups(r.company_id, { force: true });
   const amt = String(Number(r.amount));
-  const desc = `سداد ${r.request_no} — ${r.payee_name}` + (r.invoice_no ? ` — فاتورة ${r.invoice_no}` : '');
+  const desc = `سداد ${r.request_no} — ${r.payee_name}` + (docText(r) ? ` — ${docText(r)}` : '');
   const payee = { ...emptyLine(), account_id: r.invoice_account_id || null, debit: amt, party_id: r.party_id, employee_id: r.employee_id,
-    invoice_no: r.invoice_no || '', project_id: r.project_id, cost_center_id: r.cost_center_id, equipment_id: r.equipment_id, description: r.description.slice(0, 200) };
+    invoice_no: r.basis === 'invoice' ? r.invoice_no || '' : '', project_id: r.project_id, cost_center_id: r.cost_center_id, equipment_id: r.equipment_id, description: r.description.slice(0, 200) };
   const bankLine = { ...emptyLine(), credit: amt, description: r.payee_iban ? `تحويل إلى ${r.payee_iban}` : '' };
   const entry = { entry_date: r.transfer_date || today(), description: desc, entry_type: 'regular', lines: [payee, bankLine] };
   const m = modal({ title: `قيد سداد الطلب ${r.request_no}`, size: 'full' });
@@ -475,7 +500,7 @@ export async function printTransfers(rows) {
   document.getElementById('print-area')?.remove(); document.getElementById('print-page')?.remove();
   const total = rows.reduce((s, r) => s + Number(r.amount), 0);
   const d = new Date();
-  const purpose = (r) => [KINDS[r.kind], r.invoice_no && 'فاتورة ' + r.invoice_no, r.project_code && 'مشروع ' + r.project_code].filter(Boolean).join(' — ') + ` (${r.request_no})`;
+  const purpose = (r) => [KINDS[r.kind], docText(r).replace(' (لم تُسجَّل)', ''), r.project_code && 'مشروع ' + r.project_code].filter(Boolean).join(' — ') + ` (${r.request_no})`;
   const content = h('div', { class: 'qt-body' },
     hasLh ? null : h('div', { class: 'qt-plainhead' }, brand.logo ? h('img', { class: 'rp-logo', src: brand.logo, alt: '' }) : null,
       h('div', {}, h('div', { class: 'rp-co' }, co.name || ''), h('div', { class: 'rp-meta' },

@@ -730,6 +730,16 @@ html[data-fs="xl"] { --fs: 1.25; }
 .pr-signs { display: flex; gap: 10mm; margin-top: 10mm; break-inside: avoid; }
 .pr-sign { flex: 1; text-align: center; }
 
+/* قائمة الطلبات على التليفون: بطاقة لكل طلب */
+@media (max-width: 700px) {
+  .pr-cards thead { display: none; }
+  .pr-cards, .pr-cards tbody { display: block; }
+  .pr-cards tr { display: block; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .pr-cards td { display: block; overflow: hidden; border: 0 !important; padding: 3px 12px !important; text-align: end; white-space: normal; direction: rtl; }
+  .pr-cards td[data-label]::before { content: attr(data-label); color: var(--ink-3); float: right; margin-left: 12px; }
+  .pr-cards td[data-label=""]::before { content: none; }
+}
+
 /* تفاصيل طلب التحويل وخط سيره */
 .pr-detail { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 860px) { .pr-detail { grid-template-columns: 1fr; } }
