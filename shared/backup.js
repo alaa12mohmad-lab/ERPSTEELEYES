@@ -9,7 +9,7 @@ import { CONFIG } from '../config.js';
 
 // [schema, table] — بالترتيب الذي يحتاجه الاسترجاع (الجداول الأساسية قبل الجداول المعتمدة عليها)
 export const BACKUP_TABLES = [
-  ['core', 'companies'], ['core', 'settings'], ['core', 'doc_sequences'], ['core', 'modules'], ['core', 'roles'], ['core', 'role_permissions'],
+  ['core', 'companies'], ['core', 'schema_migrations'], ['core', 'settings'], ['core', 'doc_sequences'], ['core', 'modules'], ['core', 'roles'], ['core', 'role_permissions'],
   ['core', 'sensitive_items'], ['core', 'role_sensitive'], ['core', 'app_users'], ['core', 'user_companies'], ['core', 'user_projects'],
   ['core', 'user_permission_overrides'], ['core', 'user_sensitive_overrides'],
   ['core', 'units'], ['core', 'categories'], ['core', 'cost_centers'], ['core', 'parties'], ['core', 'projects'], ['core', 'project_companies'],

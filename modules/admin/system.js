@@ -1,5 +1,6 @@
 // هوية النظام وإعداداته: الاسم والشعار والإعلان والطباعة والأمان والضريبة — في شاشة واحدة للمدير
 import { core, insertRows, updateRow } from '../../shared/sb.js';
+import { VERSION } from '../../shared/version.js';
 import { h, toast } from '../../shared/ui.js';
 import { brand, BRAND_KEYS, loadBranding, logoEl, hijri } from '../../shared/branding.js';
 
@@ -36,6 +37,7 @@ export async function renderSystem(el) {
   const { data: rows, error } = await core.from('settings').select('*').is('company_id', null).eq('status', 'active').in('key', Object.values(KEYS));
   if (error) { el.replaceChildren(h('div', { class: 'notice bad' }, error.message)); return; }
   const cur = Object.fromEntries(rows.map((r) => [r.key, r]));
+  const { data: mig } = await core.from('schema_migrations').select('name, applied_at').order('name');
   const val = (k, d) => (cur[k] ? cur[k].value : d);
 
   const name = h('input', { class: 'input', value: val(KEYS.name, brand.name), maxlength: 60 });
@@ -120,6 +122,10 @@ export async function renderSystem(el) {
     card('الطباعة',
       h('label', { class: 'check' }, hij, ' إظهار التاريخ الهجري بجانب الميلادي في التقارير والقيود المطبوعة'),
       h('p', { class: 'help' }, 'اليوم: ', hijri(), '. بيانات الشركة في ترويسة الطباعة (السجل التجاري والرقم الضريبي والعنوان والهاتف) تُعدَّل من «البيانات الأساسية ← الشركات».')),
+    card('إصدار قاعدة البيانات',
+      h('p', { style: { margin: 0 } }, 'الواجهة: ', h('b', { class: 'ltr' }, VERSION), ' — آخر ملف تحديث مطبّق على قاعدة البيانات: ',
+        h('b', { class: 'ltr' }, mig?.length ? mig[mig.length - 1].name : 'غير مسجّل (شغّل ملفات 1.8.1)'), mig?.length ? ` (${mig.length} ملفًا)` : ''),
+      h('p', { class: 'help' }, 'إذا كان آخر ملف أقدم مما في README الإصدار، فهناك ملف تحديث لم يُشغَّل بعد.')),
     card('الأمان',
       h('div', { class: 'form-grid' }, F('الخروج التلقائي بعد عدم النشاط (دقيقة)', idle, '0 = بدون خروج تلقائي')),
       h('label', { class: 'check' }, mfa, ' إلزام حسابات المدير بالتحقق بخطوتين'),
