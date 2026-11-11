@@ -11,7 +11,7 @@
 // إضافة قسم جديد = إنشاء مجلده وإضافته لقائمة MODULES فقط.
 import { CONFIG } from './config.js';
 import { VERSION } from './shared/version.js';
-import { sb, core } from './shared/sb.js';
+import { sb, core, logout } from './shared/sb.js';
 import { h, toast, modal, icon, store } from './shared/ui.js';
 import { state } from './shared/state.js';
 import { MODES, ACCENTS, FONT_SIZES, getTheme, setTheme } from './shared/theme.js';
@@ -46,6 +46,9 @@ async function afterLogin() {
   }
   if (!p.registered) return renderMessage(root, 'حساب غير مسجّل', 'حسابك غير مسجّل في النظام. تواصل مع المحاسب لإضافتك.');
   if (!p.is_active) return renderMessage(root, 'حساب موقوف', 'حسابك موقوف. تواصل مع المحاسب.');
+  // من فعّل التحقق بخطوتين (ولو لم يكن مُلزمًا): يتحقق أولًا، لأن Supabase لا يقبل تغيير كلمة المرور قبل التحقق (aal2)
+  const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal?.nextLevel === 'aal2' && aal?.currentLevel !== 'aal2') return renderMfa(root, afterLogin);
   if (p.must_change_password) return renderChangePassword(root, afterLogin);
   if (p.mfa_required && !p.mfa_ok) return renderMfa(root, afterLogin);
   await loadBranding();
@@ -176,7 +179,7 @@ function toggleMenu() {
     h('button', { onclick: () => { toggleMenu(); openChangePassword(); } }, 'تغيير كلمة المرور'),
     h('button', { onclick: () => { toggleMenu(); openMfa(); } }, 'التحقق بخطوتين'),
     p.is_admin ? h('button', { onclick: () => { toggleMenu(); runBackup(); }, title: lastBackup() ? 'آخر نسخة: ' + lastBackup().toLocaleString('ar-EG') : 'لم تُنشأ نسخة من هذا الجهاز' }, 'نسخة احتياطية الآن') : null,
-    h('button', { onclick: async () => { toggleMenu(); if (await askBackupBeforeLogout()) sb.auth.signOut(); } }, 'تسجيل الخروج'));
+    h('button', { onclick: async () => { toggleMenu(); if (await askBackupBeforeLogout()) logout(); } }, 'تسجيل الخروج'));
   document.body.append(menuEl);
 }
 document.addEventListener('click', () => { if (menuEl) { menuEl.remove(); menuEl = null; } });

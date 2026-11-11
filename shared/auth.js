@@ -1,5 +1,5 @@
 // شاشات الدخول: تسجيل الدخول، وتغيير كلمة المرور، والتحقق بخطوتين
-import { sb, rpc } from './sb.js';
+import { sb, rpc, logout } from './sb.js';
 import { h, toast } from './ui.js';
 import { CONFIG } from '../config.js';
 import { VERSION } from './version.js';
@@ -42,7 +42,7 @@ export function renderLogin(root, onDone) {
 export function renderMessage(root, title, message) {
   root.replaceChildren(authShell(title, null,
     h('div', { class: 'notice warn' }, message),
-    h('button', { class: 'btn', style: { marginTop: '16px' }, onclick: () => sb.auth.signOut() }, 'تسجيل الخروج')));
+    h('button', { class: 'btn', style: { marginTop: '16px' }, onclick: () => logout() }, 'تسجيل الخروج')));
 }
 
 export function changePasswordForm({ forced, onDone, onCancel }) {
@@ -113,5 +113,5 @@ export async function renderMfa(root, onDone) {
   root.replaceChildren(authShell('التحقق بخطوتين', 'حسابك يتطلب تحققًا إضافيًا', h('div', { class: 'empty' }, '…')));
   const form = await mfaForm({ onDone });
   root.replaceChildren(authShell('التحقق بخطوتين', 'حسابك يتطلب تحققًا إضافيًا', form,
-    h('button', { class: 'btn ghost', style: { marginTop: '10px' }, onclick: () => sb.auth.signOut() }, 'تسجيل الخروج')));
+    h('button', { class: 'btn ghost', style: { marginTop: '10px' }, onclick: () => logout() }, 'تسجيل الخروج')));
 }

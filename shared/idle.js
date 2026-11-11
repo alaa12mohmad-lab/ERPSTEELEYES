@@ -1,7 +1,7 @@
 // الخروج التلقائي بعد عدم النشاط (المدة من إعداد security.idle_minutes، الافتراضي 30 دقيقة)
 //   آخر نشاط محفوظ في المتصفح فيُشارَك بين كل التبويبات المفتوحة: النشاط في تبويب واحد يكفي للجميع
 //   قبل الخروج بدقيقة يظهر تنبيه «أنا هنا». مسودة صفحة القيود محفوظة تلقائيًا فلن تضيع.
-import { sb, core } from './sb.js';
+import { sb, core, logout as endSession } from './sb.js';
 import { h, modal, toast } from './ui.js';
 
 const KEY = 'erp-last-active';
@@ -21,7 +21,7 @@ function touch() {
 async function logout() {
   stopIdle();
   try { sessionStorage.setItem('erp-idle-logout', '1'); } catch { /* ignore */ }
-  await sb.auth.signOut();
+  await endSession();
 }
 
 function check() {

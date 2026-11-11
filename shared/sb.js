@@ -5,6 +5,15 @@ export const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPAB
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'erp-auth' },
 });
 
+// الخروج: يُنهي الجلسة على الخادم، وإن تعذّر (انتهت الجلسة أو انقطع الاتصال) يمسحها من الجهاز على أي حال،
+//   ثم يعيد تحميل الصفحة حتى لا يبقى في الذاكرة شيء من بيانات المستخدم
+export async function logout() {
+  try { const { error } = await sb.auth.signOut(); if (error) throw error; }
+  catch { try { await sb.auth.signOut({ scope: 'local' }); } catch { /* ignore */ } }
+  try { Object.keys(localStorage).filter((k) => k === 'erp-auth' || k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
+  location.replace(location.pathname + location.search);
+}
+
 // قاعدة بيانات الأساس (schema core) وقسم المحاسبة
 export const core = sb.schema('core');
 export const acc = sb.schema('accounting');
