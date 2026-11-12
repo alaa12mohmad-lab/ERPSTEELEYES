@@ -26,9 +26,10 @@ import coreModule from './modules/core/index.js';
 import adminModule from './modules/admin/index.js';
 import accountingModule from './modules/accounting/index.js';
 import paymentsModule from './modules/payments/index.js';
+import custodyModule from './modules/custody/index.js';
 
 // كل قسم جديد يُضاف هنا فقط
-const MODULES = [paymentsModule, accountingModule, coreModule, adminModule];
+const MODULES = [paymentsModule, custodyModule, accountingModule, coreModule, adminModule];
 
 const root = document.getElementById('app');
 

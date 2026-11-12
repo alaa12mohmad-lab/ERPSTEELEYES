@@ -20,6 +20,7 @@ export const BACKUP_TABLES = [
   ['accounting', 'contracts'], ['accounting', 'contract_amendments'], ['accounting', 'contract_bills'], ['accounting', 'sales_invoices'],
   ['accounting', 'quotations'], ['core', 'company_letterheads'],
   ['core', 'project_managers'], ['accounting', 'payment_requests'], ['accounting', 'payment_request_events'],
+  ['accounting', 'custodies'], ['accounting', 'custody_moves'], ['accounting', 'custody_expenses'],
   ['core', 'audit_log'],
 ];
 // ملاحظة: ملفات المرفقات (Storage) ليست في هذه النسخة ولا في النسخة الليلية — النسخة لبيانات قاعدة البيانات فقط
