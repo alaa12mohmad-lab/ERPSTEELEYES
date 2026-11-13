@@ -16,7 +16,9 @@ const PERIODS = [['1m', 'آخر شهر', 1], ['2m', 'آخر شهرين', 2], ['3
 function periodOf(code) {
   const p = PERIODS.find((x) => x[0] === code) || PERIODS[0]; const to = new Date();
   if (code === 'ytd') return { from: ymd(new Date(to.getFullYear(), 0, 1)), to: ymd(to) };
-  const from = new Date(to); from.setMonth(from.getMonth() - p[2]); from.setDate(from.getDate() + 1);
+  const y = to.getFullYear(), m = to.getMonth() - p[2];
+  const last = new Date(y, m + 1, 0).getDate();
+  const from = new Date(y, m, Math.min(to.getDate(), last)); from.setDate(from.getDate() + 1);
   return { from: ymd(from), to: ymd(to) };
 }
 let CMP = 'prev';   // prev: الفترة السابقة بالطول نفسه | yoy: نفس الفترة من السنة الماضية
@@ -88,10 +90,10 @@ const DRAW = {
     d.by_company.length > 1 ? h('div', { class: 'help' }, 'التحويلات بين الشركات لا تغيّر مجموع النقدية.') : null],
   receivables: (d) => [big(d.value), line('منه متأخر عن الاستحقاق', `${num(d.overdue)} (${d.overdue_count} فاتورة)`, d.overdue > 0 ? 'bad' : ''),
     list(d.top, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) }, { t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }]),
-    byCo(d.by_company, [{ t: 'العملاء', num: true, v: (r) => num(r.ar) }])],
+    byCo(d.by_company, [{ t: 'العملاء', num: true, v: (r) => num(r.value) }])],
   payables: (d) => [big(d.value), line('منه متأخر عن الاستحقاق', `${num(d.overdue)} (${d.overdue_count} فاتورة)`, d.overdue > 0 ? 'warn' : ''),
     list(d.top, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) }, { t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }]),
-    byCo(d.by_company, [{ t: 'الموردون', num: true, v: (r) => num(r.ap) }])],
+    byCo(d.by_company, [{ t: 'الموردون', num: true, v: (r) => num(r.value) }])],
   commitments: (d) => {
     const gap = Number(d.cash) + Number(d.fixed_in) - Number(d.total);
     return [big(d.total), h('div', { class: 'help' }, `من ${fmt.date(d.from)} إلى ${fmt.date(d.to)}`),
@@ -205,21 +207,22 @@ for (const [code, r] of Object.entries(RATIOS)) {
 function trendChart(months) {
   if (!months.length) return h('div', { class: 'help' }, 'لا أرقام');
   const W = 640, H = 200, padB = 26, padT = 10;
-  const max = Math.max(1, ...months.flatMap((m) => [Number(m.revenue), Number(m.expense)]));
+  const vals = months.flatMap((m) => [Number(m.revenue), Number(m.expense)]);
+  const max = Math.max(1, ...vals); const min = Math.min(0, ...vals);
   const slot = W / months.length; const bw = Math.max(4, Math.min(22, slot / 3 - 2));
   const ns = 'http://www.w3.org/2000/svg';
   const el = (tag, attrs, ...kids) => { const e = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); kids.forEach((k) => e.append(k)); return e; };
-  const y = (v) => H - padB - (Math.max(0, v) / max) * (H - padB - padT);
+  const y = (v) => padT + ((max - v) / (max - min)) * (H - padB - padT);   // خط الصفر عند y(0)
+  const bar = (v, x, cls) => el('rect', { x, y: Math.min(y(v), y(0)), width: bw, height: Math.max(1, Math.abs(y(v) - y(0))), rx: 3, class: cls + (v < 0 ? ' neg' : '') });
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'dash-chart', role: 'img', 'aria-label': 'الإيرادات والمصروفات شهرًا بشهر' });
-  svg.append(el('line', { x1: 0, x2: W, y1: H - padB, y2: H - padB, class: 'axis' }));
+  svg.append(el('line', { x1: 0, x2: W, y1: y(0), y2: y(0), class: 'axis' }));
   const label = (mo) => new Intl.DateTimeFormat('ar-EG', { month: 'short' }).format(new Date(mo + '-01T00:00:00'));
   months.forEach((m, i) => {
     const cx = W - (i + 0.5) * slot;   // من اليمين لليسار
     const g = el('g', { class: 'bar-grp' });
     const tip = el('title', {}); tip.textContent = `${m.month}: إيرادات ${num(m.revenue)} — مصروفات ${num(m.expense)} — صافي ${num(Number(m.revenue) - Number(m.expense))}`;
     g.append(tip, el('rect', { x: cx - slot / 2, y: 0, width: slot, height: H - padB, class: 'hit' }),
-      el('rect', { x: cx + 1, y: y(m.revenue), width: bw, height: H - padB - y(m.revenue), rx: 3, class: 'rev' }),
-      el('rect', { x: cx - bw - 1, y: y(m.expense), width: bw, height: H - padB - y(m.expense), rx: 3, class: 'exp' }));
+      bar(Number(m.revenue), cx + 1, 'rev'), bar(Number(m.expense), cx - bw - 1, 'exp'));
     if (months.length <= 14 || i % 2 === 0) { const tx = el('text', { x: cx, y: H - 8, 'text-anchor': 'middle' }); tx.textContent = label(m.month); g.append(tx); }
     svg.append(g);
   });
@@ -233,9 +236,9 @@ function trendChart(months) {
 // الصفحة
 // ---------------------------------------------------------------------
 async function renderBoard(el) {
-  let cards = []; let catalog = [];
+  let cards = []; let catalog = []; let details = [];
   try {
-    [cards, catalog] = await Promise.all([rpc('my_dash_cards'), rpc('dash_catalog')]);
+    [cards, catalog, details] = await Promise.all([rpc('my_dash_cards'), rpc('dash_catalog'), rpc('my_dash_details')]);
   } catch (e) { put(el, h('div', { class: 'notice bad' }, e.message)); return; }
   if (!cards.length) { put(el, h('div', { class: 'notice' }, 'لم تُمنح لحسابك بطاقات في لوحة التحكم. يحددها المدير من شاشة المستخدمين.')); return; }
   const meta = Object.fromEntries(catalog.map((c) => [c.code, c]));
@@ -283,14 +286,17 @@ async function renderBoard(el) {
       h('div', { class: 'dash-grid' }, g.items.map((code) => {
         const m = meta[code]; let inner;
         try { inner = DRAW[code](data[code] || {}); } catch (e) { inner = h('div', { class: 'notice bad' }, e.message); }
-        const lk = LINKS[code];
+        const lk = LINKS[code]; const tag = scopeTag(code, data._meta.multi);
+        const more = details.includes(code)
+          ? h('button', { class: 'dash-more', onclick: () => detailDialog(code, m.title, { from: from.value, to: to.value, companies: ids() }) }, 'القائمة ←')
+          : lk && state.can(lk[0], 1) ? h('a', { class: 'dash-more', href: lk[1] }, 'التفاصيل ←') : null;
         return h('section', { class: 'dash-card' + (['pl', 'trend', 'projects', 'equipment', 'alerts', 'contracts', 'project_risk', 'top_expenses'].includes(code) ? ' wide' : '') },
-          h('header', {}, h('div', { class: 'dash-head' }, h('h3', {}, m.title), lk && state.can(lk[0], 1) ? h('a', { class: 'dash-more', href: lk[1] }, 'التفاصيل ←') : null),
-            h('small', {}, m.hint)), h('div', { class: 'dash-body' }, inner));
+          h('header', {}, h('div', { class: 'dash-head' }, h('h3', {}, m.title), more),
+            h('small', {}, m.hint), tag ? h('span', { class: 'dash-tag' }, tag) : null), h('div', { class: 'dash-body' }, inner));
       }))]),
     h('p', { class: 'help', style: { marginTop: '14px' } },
       `الفترة ${fmt.date(data._meta.from)} — ${fmt.date(data._meta.to)} (${data._meta.days} يومًا)، والمقارنة بـ ${fmt.date(data._meta.prev_from)} — ${fmt.date(data._meta.prev_to)}. `,
-      data._meta.multi ? 'أكثر من شركة: الأرقام مجمّعة بعد استبعاد التعاملات بين الشركات (الذمم المتبادلة والبيع والشراء بينها)، وأرقام كل شركة وحدها داخل البطاقات. ' : '',
+      data._meta.multi ? 'أكثر من شركة: بطاقات «مجمّع بعد الاستبعاد» تستبعد التعاملات بين الشركات (الذمم المتبادلة والبيع والشراء بينها)، وبطاقات «بأرقام كل شركة» تجمع أرقام الشركات كما هي (الشراء من شقيقة تكلفة حقيقية على المشروع). ' : '',
       'الأرصدة في آخر الفترة، والإيرادات والمصروفات خلالها، من القيود السارية فقط (دون قيود الافتتاح والإقفال).'));
   }
   load();
@@ -306,9 +312,13 @@ export default {
 
 // قائمة البطاقات للمدير (شاشة المستخدمين)
 export async function cardPicker(userId) {
-  const [catalog, { data }] = await Promise.all([rpc('dash_catalog'), core.from('user_dashboard_cards').select('card_code').eq('user_id', userId).eq('status', 'active')]);
-  const mine = new Set((data || []).map((r) => r.card_code));
-  const boxes = [];
+  const [catalog, detailable, res] = await Promise.all([rpc('dash_catalog'), rpc('dash_detail_cards'),
+    core.from('user_dashboard_cards').select('card_code, with_details').eq('user_id', userId).eq('status', 'active')]);
+  // تعذّر قراءة البطاقات الحالية: لا تُعرض القائمة ولا تُحفظ (حتى لا تُسحب بطاقات المستخدم بالخطأ)
+  if (res.error) throw new Error('تعذّر تحميل بطاقات المستخدم — لن تُغيَّر: ' + res.error.message);
+  const mine = new Set((res.data || []).map((r) => r.card_code));
+  const mineDet = new Set((res.data || []).filter((r) => r.with_details).map((r) => r.card_code));
+  const boxes = []; const dets = {};
   const groups = [...new Set(catalog.map((c) => c.grp))];
   const ui = h('div', { class: 'field wide' },
     h('div', { class: 'section-title', style: { marginTop: '6px' } }, 'بطاقات لوحة التحكم'),
@@ -316,8 +326,56 @@ export async function cardPicker(userId) {
     h('div', { class: 'dash-pick' }, groups.map((g) => {
       const items = catalog.filter((c) => c.grp === g).map((c) => { const b = h('input', { type: 'checkbox', value: c.code, checked: mine.has(c.code) }); boxes.push(b); return { c, b }; });
       return h('fieldset', {}, h('legend', {}, g, ' ', h('button', { type: 'button', class: 'btn ghost sm', onclick: () => { const on = !items.every((x) => x.b.checked); items.forEach((x) => { x.b.checked = on; }); } }, 'الكل')),
-        items.map(({ c, b }) => h('label', { class: 'check', title: c.hint }, b, c.title)));
-    })));
-  return { ui, save: (id) => rpc('set_user_dash_cards', { p_user: id, p_codes: boxes.filter((b) => b.checked).map((b) => b.value) }) };
+        items.map(({ c, b }) => {
+          if (!detailable.includes(c.code)) return h('label', { class: 'check', title: c.hint }, b, c.title);
+          const d = h('input', { type: 'checkbox', checked: mineDet.has(c.code), title: 'يفتح قائمة ما وراء الرقم' }); dets[c.code] = d;
+          d.onchange = () => { if (d.checked) b.checked = true; };
+          b.addEventListener('change', () => { if (!b.checked) d.checked = false; });
+          return h('div', { class: 'dash-pick-row' }, h('label', { class: 'check', title: c.hint }, b, c.title), h('label', { class: 'check sub' }, d, 'بالقائمة'));
+        }));
+    })),
+    h('div', { class: 'help' }, '«بالقائمة»: يفتح المستخدم قائمة ما وراء الرقم (مثل الفواتير المتأخرة أو الطلبات) دون صلاحية على القسم نفسه، وبنطاق شركاته ومشاريعه.'));
+  return { ui, save: (id) => rpc('set_user_dash_cards', { p_user: id, p_codes: boxes.filter((b) => b.checked).map((b) => b.value),
+    p_details: Object.entries(dets).filter(([, d]) => d.checked).map(([c]) => c) }) };
 }
 
+// نطاق رقم كل بطاقة (يظهر وسمًا عليها)
+const TODAY_CARDS = ['alerts', 'commitments', 'vat', 'contracts', 'project_risk', 'overdue_inv', 'payreq', 'custody'];
+const COMPANY_CARDS = ['projects', 'equipment', 'cash'];
+function scopeTag(code, multi) {
+  if (TODAY_CARDS.includes(code)) return 'حتى اليوم';
+  if (!multi) return null;
+  return COMPANY_CARDS.includes(code) ? 'بأرقام كل شركة' : 'مجمّع بعد الاستبعاد';
+}
+
+// نافذة تفاصيل البطاقة: القائمة التي وراء الرقم (لمن مُنح البطاقة «بالقائمة»)
+const STATE_AR = { pending: 'بانتظار الاعتماد', returned: 'مُرجَع للتعديل', approved: 'معتمد', on_hold: 'موقوف', transferred: 'حُوِّل' };
+const DETAIL_COLS = {
+  inv: [{ t: 'الطرف', v: (r) => r.party }, { t: 'الفاتورة', v: (r) => r.invoice }, { t: 'التاريخ', v: (r) => fmt.date(r.date) }, { t: 'الاستحقاق', v: (r) => fmt.date(r.due) },
+    { t: 'القيمة', num: true, v: (r) => num(r.amount) }, { t: 'المتبقي', num: true, v: (r) => num(r.remaining) }, { t: 'التأخير', num: true, v: (r) => (r.late ? `${r.late} يوم` : '') }],
+  payreq: [{ t: 'الطلب', v: (r) => r.no + (r.urgent ? ' (عاجل)' : '') }, { t: 'المستفيد', v: (r) => r.payee }, { t: 'المشروع', v: (r) => r.project || '' },
+    { t: 'الحالة', v: (r) => STATE_AR[r.state] || r.state }, { t: 'آخر موعد', v: (r) => h('span', { class: r.late ? 'neg' : '' }, fmt.date(r.due)) }, { t: 'المبلغ', num: true, v: (r) => num(r.amount) }],
+  custody: [{ t: 'العهدة', v: (r) => `${r.no} — ${r.holder}` }, { t: 'الرصيد', num: true, v: (r) => num(r.balance) }, { t: 'معلّق', num: true, v: (r) => num(r.pending) }, { t: 'منذ', num: true, v: (r) => `${r.days} يوم` }],
+  projects: [{ t: 'المشروع', v: (r) => `${r.code} — ${r.name}` }, { t: 'الإيراد', num: true, v: (r) => num(r.revenue) }, { t: 'المصروف', num: true, v: (r) => num(r.expense) },
+    { t: 'الهامش', num: true, v: (r) => num(Number(r.revenue) - Number(r.expense)) }],
+  equipment: [{ t: 'المعدة', v: (r) => `${r.code} — ${r.name}` }, { t: 'التكلفة', num: true, v: (r) => num(r.expense) }, { t: 'الإيراد', num: true, v: (r) => num(r.revenue) }],
+  contracts: [{ t: 'العقد', v: (r) => r.no }, { t: 'الطرف', v: (r) => r.party }, { t: 'المشروع', v: (r) => r.project }, { t: 'القيمة', num: true, v: (r) => num(r.value) },
+    { t: 'المنفّذ', num: true, v: (r) => num(r.work) }, { t: 'الباقي', num: true, v: (r) => num(r.backlog) }, { t: 'غير محصّل', num: true, v: (r) => num(r.outstanding) }, { t: 'محتجز', num: true, v: (r) => num(r.retention) }],
+  top_expenses: [{ t: 'البند', v: (r) => `${r.code} — ${r.name}` }, { t: 'الفترة', num: true, v: (r) => num(r.cur) }, { t: 'المقارنة', num: true, v: (r) => num(r.prev) }],
+  top_customers: [{ t: 'العميل', v: (r) => `${r.code || ''} ${r.name}` }, { t: 'المفوتر', num: true, v: (r) => num(r.amount) }],
+  project_risk: [{ t: 'المشروع', v: (r) => `${r.code} — ${r.name}` }, { t: 'المكتسب', num: true, v: (r) => num(r.earned) }, { t: 'المصروف', num: true, v: (r) => num(r.cost) },
+    { t: 'الحالة', v: (r) => ({ bad: 'خسارة', warn: 'هامش ضعيف', ok: 'سليم' })[r.lvl] }],
+};
+async function detailDialog(code, title, p) {
+  const { modal } = await import('../../shared/ui.js');
+  const m = modal({ title: 'تفاصيل: ' + title, size: 'wide' });
+  put(m.body, h('div', { class: 'empty' }, 'جارٍ التحميل…'));
+  try {
+    const res = await rpc('dash_detail', { p_card: code, p_companies: p.companies, p_from: p.from, p_to: p.to }, 'accounting');
+    let cols = DETAIL_COLS[['receivables', 'payables', 'overdue_inv'].includes(code) ? 'inv' : code];
+    if (res.multi && res.rows.length && res.rows[0].company) cols = [{ t: 'الشركة', v: (r) => r.company }, ...cols];
+    put(m.body, h('div', { class: 'help', style: { marginBottom: '8px' } }, `${res.rows.length} سطر${res.rows.length >= 1000 ? ' (أول 1,000)' : ''}`),
+      h('div', { class: 'table-wrap' }, list(res.rows, cols)));
+  } catch (e) { put(m.body, h('div', { class: 'notice bad' }, e.message)); }
+  m.foot.append(h('button', { class: 'btn', onclick: m.close }, 'إغلاق'));
+}

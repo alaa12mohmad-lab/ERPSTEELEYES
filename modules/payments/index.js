@@ -15,7 +15,7 @@ export const STATES = {
 const EVENTS = {
   submit: 'قدّم الطلب', resubmit: 'أعاد التقديم بعد التعديل', approve: 'وافق', forward: 'وافق وأحاله للمدير العام', return: 'أرجعه للتعديل',
   reject: 'رفضه', hold: 'أوقفه', release: 'أطلقه', withdraw: 'سحبه', transfer: 'سجّل «تم التحويل»', link: 'ربط قيد السداد', unlink: 'فك ربط القيد',
-  auto_unlink: 'عاد غير مدفوع',
+  auto_unlink: 'عاد غير مدفوع', acc_edit: 'عدّلته المحاسبة', delete: 'حذفته المحاسبة',
 };
 const LEVEL = { 1: 'مدير المشروع', 2: 'المدير العام' };
 export const BASES = { invoice: 'فاتورة مسجّلة', pending_invoice: 'فاتورة لم تُسجَّل بعد', quote: 'عرض سعر', none: 'بدون مستند' };
@@ -194,8 +194,8 @@ async function markTransferred(rows, done) {
 // ---------------------------------------------------------------------
 // نموذج الطلب: جديد، أو تعديل بعد الإرجاع
 // ---------------------------------------------------------------------
-async function requestForm(r, done) {
-  const m = modal({ title: r ? `تعديل الطلب ${r.request_no}` : 'طلب تحويل جديد', size: 'wide' });
+async function requestForm(r, done, asAcc = false) {
+  const m = modal({ title: r ? `${asAcc ? 'تعديل المحاسبة للطلب' : 'تعديل الطلب'} ${r.request_no}` : 'طلب تحويل جديد', size: 'wide' });
   const companies = state.companies();
   const coSel = h('select', { class: 'input', disabled: !!r }, companies.map((c) => h('option', { value: c.id, selected: (r?.company_id || ids()[0]) === c.id }, c.name)));
   const kind = h('select', { class: 'input' }, Object.entries(KINDS).map(([k, t]) => h('option', { value: k, selected: (r?.kind || 'invoice') === k }, t)));
@@ -295,7 +295,8 @@ async function requestForm(r, done) {
       F('البنك', bank), F('الآيبان', iban, { help: 'يُسحب من كارت المستفيد، ويمكن كتابة حساب آخر لهذا الطلب' }),
       F('المشروع', slot.project), F('مركز التكلفة', slot.cc), F('المعدة', slot.eq),
       F('البيان والمبرر', desc, { req: true, wide: true }),
-      r ? F('ملاحظة التعديل', note, { wide: true }) : null,
+      r ? F('ملاحظة التعديل', note, { wide: true, help: asAcc ? 'تعديل المحاسبة يبقي اعتماد الطلب، ويُسجَّل ما تغيّر في خط السير'
+        : ['approved', 'on_hold', 'pending'].includes(r.state) && r.state !== 'returned' ? 'بعد التعديل يعود الطلب للاعتماد من البداية' : null }) : null,
       F('المرفقات (اختيارية)', files, { wide: true, help: 'صورة الفاتورة أو عرض السعر أو أمر الشراء — صور أو PDF حتى 15 ميجا' })),
     err);
   await loadCompany();
@@ -314,14 +315,14 @@ async function requestForm(r, done) {
     try {
       const res = await rpc('submit_payment_request', { p: payload(confirm) }, 'accounting');
       if (files.files.length) await uploadFiles(res.id, coSel.value, files.files);
-      toast(`${r ? 'أُعيد تقديم' : 'قُدِّم'} الطلب ${res.request_no}`, 'ok');
+      toast(r ? (asAcc ? `عُدّل الطلب ${res.request_no}` : `أُعيد تقديم الطلب ${res.request_no} للاعتماد`) : `قُدِّم الطلب ${res.request_no}`, 'ok');
       m.close(); done?.();
     } catch (e) {
       if (/^تحذير تكرار/.test(e.message) && await confirmDialog(e.message.replace(/ ثم أرسل مرة أخرى$/, '') + ' — هل تريد إرساله؟', { ok: 'نعم، أرسله' })) { btn.disabled = false; return send(true); }
       err.textContent = e.message; err.style.display = '';
     } finally { btn.disabled = false; }
   };
-  const btn = h('button', { class: 'btn primary', onclick: () => send() }, r ? 'إعادة التقديم' : 'تقديم الطلب');
+  const btn = h('button', { class: 'btn primary', onclick: () => send() }, r ? (asAcc ? 'حفظ التعديل' : 'إعادة التقديم') : 'تقديم الطلب');
   m.foot.append(btn, h('button', { class: 'btn', onclick: m.close }, 'رجوع'));
 }
 
@@ -403,7 +404,13 @@ export async function openRequest(id, done) {
   if (A.includes('hold')) m.foot.append(B('إيقاف قبل السداد', 'danger', withNote('سبب الإيقاف', 'إيقاف', 'hold_payment_request', (n) => ({ p_id: r.id, p_action: 'hold', p_note: n }))));
   if (A.includes('release')) m.foot.append(B('إطلاق الطلب', 'primary', withNote('إطلاق الطلب للسداد', 'إطلاق', 'hold_payment_request', (n) => ({ p_id: r.id, p_action: 'release', p_note: n }), false)));
   if (A.includes('reject') && r.state === 'on_hold') m.foot.append(B('رفض', 'danger', withNote('سبب الرفض', 'رفض', 'hold_payment_request', (n) => ({ p_id: r.id, p_action: 'reject', p_note: n }))));
-  if (A.includes('edit')) m.foot.append(B('تعديل وإعادة التقديم', 'primary', () => { m.close(); requestForm(r, done); }));
+  if (A.includes('edit')) m.foot.append(B('تعديل الطلب', r.state === 'returned' ? 'primary' : '', () => { m.close(); requestForm(r, done); }));
+  if (A.includes('acc_edit')) m.foot.append(B('تعديل (المحاسبة)', '', () => { m.close(); requestForm(r, done, true); }));
+  if (A.includes('delete')) m.foot.append(B('حذف الطلب', 'danger', async () => {
+    const note = await askReason(`حذف الطلب ${r.request_no}: يختفي من كل الشاشات والتقارير ولوحة التحكم، ويبقى أثره في سجل المراجعة للمدير فقط`, { ok: 'حذف' });
+    if (note === null) return;
+    if (await run(() => rpc('delete_payment_request', { p_id: r.id, p_reason: note }, 'accounting'), 'حُذف الطلب')) { m.close(); done?.(); }
+  }));
   if (A.includes('withdraw')) m.foot.append(B('سحب الطلب', '', withNote('سبب سحب الطلب', 'سحب', 'withdraw_payment_request', (n) => ({ p_id: r.id, p_reason: n }))));
   if (A.includes('pay')) m.foot.append(B('سجّل قيد السداد', 'primary', () => payEntry(r, reload)));
   if (A.includes('link')) m.foot.append(B('اربط بقيد', '', () => linkEntry(r, reload)));

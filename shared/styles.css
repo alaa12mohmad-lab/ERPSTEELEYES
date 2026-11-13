@@ -849,3 +849,8 @@ a.dash-trio > *:hover, .dash-trio > a:hover small { color: var(--accent); }
   .dash-table { display: block; }
   .dash-table[open] summary, .dash-table:not([open]) > :not(summary) { display: none; }
 }
+button.dash-more { background: none; border: 0; padding: 0; font: inherit; font-size: calc(12.5px * var(--fs, 1)); cursor: pointer; }
+.dash-tag { display: inline-block; margin-inline-start: 6px; padding: 0 6px; border-radius: 6px; background: var(--surface-3); color: var(--ink-2); font-size: calc(11px * var(--fs, 1)); }
+.dash-pick-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.dash-pick-row .check.sub { color: var(--ink-3); font-size: calc(11.5px * var(--fs, 1)); white-space: nowrap; }
+.dash-chart .rev.neg { fill: color-mix(in srgb, var(--accent) 55%, transparent); }

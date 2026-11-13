@@ -89,8 +89,10 @@ async function collectEvents(ids, from, to, asOf, issues) {
     const { data: prs, error } = await acc.from('v_payment_requests').select('id, company_id, request_no, payee_name, amount, due_date, basis, state')
       .in('company_id', ids).in('state', ['approved', 'transferred', 'on_hold']);
     if (error) throw error;
+    // طلب «فاتورة لم تُسجَّل» سُجّلت فاتورته: الفاتورة محسوبة من الفواتير المفتوحة فلا يتكرر
+    const recorded = new Set(prs?.length ? await rpc('pr_recorded_invoice_requests', { p_companies: ids }, 'accounting') : []);
     for (const r of prs || []) {
-      if (r.basis === 'invoice') continue;
+      if (r.basis === 'invoice' || recorded.has(r.id)) continue;
       const due = r.due_date || asOf;
       events.push({ date: due < from ? from : due, origDue: due, overdue: due < from, company: r.company_id, kind: 'out',
         label: `طلب تحويل ${r.request_no} — ${r.payee_name}${r.state === 'on_hold' ? ' (موقوف)' : ''}`, amount: -Number(r.amount) });
