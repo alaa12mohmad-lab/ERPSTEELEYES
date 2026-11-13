@@ -19,7 +19,7 @@ export function renderClosing(el) {
       h('p', { class: 'help', style: { margin: '8px 0 0' } },
         'ينشئ الإقفال قيدًا بتاريخ 31/12 ينقل صافي ربح السنة أو خسارتها من الإيرادات والمصروفات إلى حساب الأرباح المحتجزة (أو جاري الشركاء). ',
         'تبقى قائمة الدخل وربحية المشاريع والمعدات كما هي لأنها تتجاهل قيد الإقفال. ',
-        'لتعديل سنة مقفلة: افتح قيد الإقفال وألغِه، ثم عدّل، ثم أقفل السنة من جديد.')),
+        'والإقفال يقفل الفترة حتى 31/12 تلقائيًا. لتعديل سنة مقفلة: يفتح المدير الفترة (أعلاه) بسبب مكتوب، ثم يُلغى قيد الإقفال، ثم التعديل، ثم الإقفال من جديد.')),
     out);
 
   // قفل الفترات
@@ -93,12 +93,12 @@ export function renderClosing(el) {
     const eqId = pkId();
     if (!eqId) { toast('اختر حساب الإقفال أولًا', 'bad'); return; }
     const name = pk.el.value || 'حساب الإقفال';
-    const msg = `إقفال سنة ${r.y}: سيُنشأ قيد بتاريخ 31/12/${r.y} فيه ${r.lines} سطرًا، ويُحوَّل صافي ${r.profit >= 0 ? 'الربح' : 'الخسارة'} ${fmt.num(Math.abs(r.profit))} إلى «${name}». هل أنت متأكد؟`;
+    const msg = `إقفال سنة ${r.y}: سيُنشأ قيد بتاريخ 31/12/${r.y} فيه ${r.lines} سطرًا، ويُحوَّل صافي ${r.profit >= 0 ? 'الربح' : 'الخسارة'} ${fmt.num(Math.abs(r.profit))} إلى «${name}»، وتُقفل الفترة حتى 31/12/${r.y} فلا يُسجَّل أو يُعدَّل قيد قبلها. هل أنت متأكد؟`;
     if (!(await confirmDialog(msg, { ok: 'إقفال' }))) return;
     try {
-      await rpc('close_year', { p_company: co, p_year: r.y, p_equity_account: eqId }, 'accounting');
-      toast(`أُقفلت سنة ${r.y}`, 'ok');
-      load();
+      const res = await rpc('close_year', { p_company: co, p_year: r.y, p_equity_account: eqId }, 'accounting');
+      toast(`أُقفلت سنة ${r.y}` + (res.locked_until ? ` والفترة مقفلة حتى ${res.locked_until}` : ''), 'ok');
+      drawLock(); load();
     } catch (e) { toast(e.message, 'bad'); }
   }
 

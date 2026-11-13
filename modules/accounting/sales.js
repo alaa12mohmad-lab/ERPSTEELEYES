@@ -59,6 +59,7 @@ export function renderSales(el) {
     const sgn = (r) => (r.doc_type === 'credit_note' ? -1 : 1);
     const remaining = appr.filter((r) => r.doc_type === 'invoice').reduce((s, r) => s + Number(r.net_amount) - Number(r.settled || 0), 0);
     out.replaceChildren(
+      ...(rows.length >= 2000 ? [h('div', { class: 'notice bad', style: { marginBottom: '10px' } }, 'الفترة فيها أكثر من 2,000 مستند: المعروض والمؤشرات لآخر 2,000 فقط — ضيّق الفترة')] : []),
       h('div', { class: 'kpis' },
         h('div', { class: 'kpi' }, h('small', {}, 'مسودات'), h('b', {}, String(cnt('draft') + cnt('rejected'))), h('span', {}, cnt('rejected') ? `منها ${cnt('rejected')} مرفوضة` : '')),
         h('div', { class: 'kpi' }, h('small', {}, 'بانتظار الاعتماد'), h('b', {}, String(cnt('submitted')))),

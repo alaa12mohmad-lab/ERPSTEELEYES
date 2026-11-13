@@ -59,9 +59,11 @@ export function renderLiquidity(el) {
 // السيولة المتوقعة: الفواتير المفتوحة بميعاد استحقاقها + الالتزامات الثابتة + الضريبة المستحقة
 //   «ماذا لو»: تأجيل أي حركة يتم من التفاصيل ويُحسب فورًا (دون حفظ)
 // ---------------------------------------------------------------------
-async function collectEvents(ids, from, to) {
+// asOf: تاريخ الأساس نفسه الذي حُسب به الرصيد الافتتاحي. issues: المصادر التي تعذّر تحميلها (يُعلَن أن التوقع ناقص)
+async function collectEvents(ids, from, to, asOf, issues) {
   const events = [];
   const comms = await acc.from('cash_commitments').select('*').in('company_id', ids).eq('status', 'active');
+  if (comms.error) issues.push('الالتزامات الثابتة: ' + comms.error.message);
   for (const c of comms.data || []) {
     const step = { monthly: 1, quarterly: 3, yearly: 12, once: 0 }[c.frequency];
     let d = c.start_date; let guard = 0;
@@ -81,13 +83,25 @@ async function collectEvents(ids, from, to) {
       events.push({ date: k.end_date < from ? from : k.end_date, origDue: k.end_date, overdue: k.end_date < from, company: k.company_id, kind: k.kind !== 'subcontract' ? 'in' : 'out',
         label: `فك محتجز — عقد ${k.contract_no} (${k.party_name})`, amount: k.kind !== 'subcontract' ? Number(k.retention_held) : -Number(k.retention_held) });
     }
-  } catch { /* العقود غير مفعّلة (لم يُشغَّل 010/011) */ }
+  } catch (e) { issues.push('محتجزات العقود: ' + e.message); }
+  // طلبات التحويل المعتمدة غير المسددة التي ليست على فاتورة مسجّلة (الفاتورة نفسها محسوبة من الفواتير المفتوحة فلا تتكرر)
+  try {
+    const { data: prs, error } = await acc.from('v_payment_requests').select('id, company_id, request_no, payee_name, amount, due_date, basis, state')
+      .in('company_id', ids).in('state', ['approved', 'transferred', 'on_hold']);
+    if (error) throw error;
+    for (const r of prs || []) {
+      if (r.basis === 'invoice') continue;
+      const due = r.due_date || asOf;
+      events.push({ date: due < from ? from : due, origDue: due, overdue: due < from, company: r.company_id, kind: 'out',
+        label: `طلب تحويل ${r.request_no} — ${r.payee_name}${r.state === 'on_hold' ? ' (موقوف)' : ''}`, amount: -Number(r.amount) });
+    }
+  } catch (e) { issues.push('طلبات التحويل: ' + e.message); }
   for (const id of ids) {
-    const inv = await rpc('open_invoices', { p_company: id, p_as_of: today(), p_party: null }, 'accounting');
+    const inv = await rpc('open_invoices', { p_company: id, p_as_of: asOf, p_party: null }, 'accounting');
     for (const r of inv) {
       const rem = Number(r.remaining);
       if (!r.invoice_no || Math.abs(rem) < 0.005) continue;
-      const due = r.due_date || r.invoice_date || today();
+      const due = r.due_date || r.invoice_date || asOf;
       events.push({ date: due < from ? from : due, origDue: due, overdue: due < from, company: id, kind: r.side === 'customer' ? 'in' : 'out',
         label: `${r.party_name} — ${r.invoice_no}`, amount: r.side === 'customer' ? rem : -rem, entry: r.entry_id });
     }
@@ -95,10 +109,10 @@ async function collectEvents(ids, from, to) {
     const lk = await loadLookups(id);
     const vatIds = new Set(lk.accounts.filter((a) => a.row.vat_role && a.row.vat_role !== 'none').map((a) => a.id));
     if (vatIds.size) {
-      const tb = await rpc('trial_balance', { p_company: id, p_from: yearStart(), p_to: today() }, 'accounting');
+      const tb = await rpc('trial_balance', { p_company: id, p_from: asOf.slice(0, 4) + '-01-01', p_to: asOf }, 'accounting');
       const net = tb.filter((r) => vatIds.has(r.account_id)).reduce((s, r) => s + Number(r.closing_credit) - Number(r.closing_debit), 0);
       if (net > 0.005) {
-        const t = new Date(today() + 'T00:00:00'); const m = t.getMonth();
+        const t = new Date(asOf + 'T00:00:00'); const m = t.getMonth();
         const endM = lk.vatPeriod === 'monthly' ? m : Math.floor(m / 3) * 3 + 2;
         const due = monthEnd(t.getFullYear(), endM + 1);
         if (due <= to) events.push({ date: due, company: id, kind: 'vat', label: 'ضريبة القيمة المضافة المستحقة', amount: -net });
@@ -109,13 +123,13 @@ async function collectEvents(ids, from, to) {
 }
 
 function renderForecast(box, ids, asOf, opening) {
-  let grain = 'week'; let events = []; const shift = new Map();
+  let grain = 'week'; let events = []; let issues = []; const shift = new Map();
   const grainSel = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: 'week' }, '12 أسبوعًا'), h('option', { value: 'month' }, '6 أشهر'));
   const resetBtn = h('button', { class: 'btn ghost', onclick: () => { shift.clear(); draw(); } }, 'إلغاء التأجيلات');
   const body = h('div', { class: 'empty' }, 'جارٍ حساب المتوقع…');
   box.replaceChildren(h('div', { class: 'card', style: { marginTop: '16px' } },
     h('div', { class: 'toolbar' }, h('strong', {}, 'السيولة المتوقعة'), grainSel, resetBtn, h('div', { class: 'grow' }),
-      h('span', { class: 'help' }, 'من الفواتير المفتوحة بتواريخ استحقاقها، والالتزامات الثابتة، والضريبة المستحقة. اضغط على أي فترة لعرض تفاصيلها.')), body));
+      h('span', { class: 'help' }, 'من الفواتير المفتوحة بتواريخ استحقاقها، وطلبات التحويل المعتمدة غير المسددة (غير المسجّلة كفواتير)، والالتزامات الثابتة، والضريبة المستحقة — كلها بتاريخ الرصيد المختار. اضغط على أي فترة لعرض تفاصيلها.')), body));
   grainSel.onchange = () => { grain = grainSel.value; load(); };
 
   const periods = () => {
@@ -130,7 +144,8 @@ function renderForecast(box, ids, asOf, opening) {
   async function load() {
     body.replaceChildren(h('div', { class: 'empty' }, 'جارٍ حساب المتوقع…'));
     const ps = periods();
-    try { events = await collectEvents(ids, ps[0].from, ps[ps.length - 1].to); draw(); } catch (e) { body.replaceChildren(h('div', { class: 'notice bad' }, e.message)); }
+    issues = [];
+    try { events = await collectEvents(ids, ps[0].from, ps[ps.length - 1].to, asOf, issues); draw(); } catch (e) { body.replaceChildren(h('div', { class: 'notice bad' }, 'تعذّر حساب المتوقع: ' + e.message)); }
   }
   const dateOf = (ev, i) => shift.get(i) || ev.date;
   function draw() {
@@ -145,6 +160,7 @@ function renderForecast(box, ids, asOf, opening) {
     });
     const beyond = events.filter((ev, i) => dateOf(ev, i) > ps[ps.length - 1].to).length;
     body.replaceChildren(...[
+      issues.length ? h('div', { class: 'notice bad', style: { margin: '8px 0' } }, 'التوقع ناقص — تعذّر تحميل: ' + issues.join('، ')) : null,
       minBal < 0 ? h('div', { class: 'notice bad', style: { margin: '8px 0' } }, `ستصبح السيولة سالبة في ${minAt.label} (${minAt.from} — ${minAt.to}): ${fmt.num(minBal)}`)
         : h('div', { class: 'notice', style: { margin: '8px 0' } }, `أقل رصيد متوقع: ${fmt.num(minBal)} في ${minAt.label}`),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid report fc' },

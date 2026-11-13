@@ -71,13 +71,21 @@ function renderList(el) {
       (refresh) => (state.profile.is_admin ? h('button', { class: 'btn', onclick: () => settingsDialog() }, 'قواعد المستندات') : null),
       (refresh) => (isAcc(2) ? h('button', { class: 'btn primary', onclick: () => openDialog(refresh) }, '＋ عهدة جديدة') : null),
     ],
-    load: () => q('v_custodies', (x) => x.in('company_id', ids()).order('opened_date', { ascending: false }).limit(1000)),
+    load: async () => {
+      const [rows, openAll] = await Promise.all([
+        q('v_custodies', (x) => x.in('company_id', ids()).order('opened_date', { ascending: false }).limit(1000)),
+        q('v_custodies', (x) => x.eq('state', 'open').in('company_id', ids())),
+      ]);
+      rows.openAll = openAll;
+      return rows;
+    },
     draw: (rows, refresh) => {
       const nq = search.value.trim().toLowerCase();
       const list = rows.filter((r) => (!st.value || r.state === st.value) && (!nq || [r.custody_no, r.holder_name, r.user_name].some((v) => String(v || '').toLowerCase().includes(nq))));
-      const open = rows.filter((r) => r.state === 'open');
+      const open = rows.openAll || rows.filter((r) => r.state === 'open');
       const multi = ids().length > 1;
       return [
+        rows.length >= 1000 ? h('div', { class: 'notice', style: { marginBottom: '10px' } }, 'القائمة تعرض آخر 1,000 عهدة — المؤشرات محسوبة من كل العهد المفتوحة') : null,
         h('div', { class: 'kpis' },
           h('div', { class: 'kpi main' }, h('small', {}, 'عهد مفتوحة'), h('b', {}, String(open.length)), h('span', {}, 'رصيدها ' + num(open.reduce((s, r) => s + Number(r.balance), 0)))),
           h('div', { class: 'kpi warn' }, h('small', {}, 'مصروفات لم تُرحَّل'), h('b', {}, num(open.reduce((s, r) => s + Number(r.pending), 0)))),
@@ -153,7 +161,8 @@ function expTable(rows, { onOpen, select = null, showCustody = false } = {}) {
     h('td', { class: 'wrap' }, docLine(r), r.attachments ? h('span', { class: 'help' }, ` 📎${r.attachments}`) : null),
     h('td', {}, r.expense_company_name, r.expense_company_id !== r.company_id ? h('div', {}, h('span', { class: 'badge warn' }, 'من عهدة ' + r.company_name)) : null),
     h('td', { class: 'num' }, h('b', {}, num(r.amount)), Number(r.vat_amount) ? h('div', { class: 'help' }, 'ضريبة ' + num(r.vat_amount)) : null),
-    h('td', {}, badge(r.state), r.last_note && r.state !== 'posted' ? h('div', { class: 'help wrap' }, r.last_note) : null, r.entry_ref ? h('div', { class: 'help ltr' }, r.entry_ref) : null))), 'لا توجد مصروفات');
+    h('td', {}, badge(r.state), r.gm_bypass && r.state === 'gm_approved' ? h('span', { class: 'badge bad', style: { marginInlineStart: '4px' }, title: r.last_note || '' }, 'استثناء بلا مدير عام') : null,
+      r.last_note && r.state !== 'posted' ? h('div', { class: 'help wrap' }, r.last_note) : null, r.entry_ref ? h('div', { class: 'help ltr' }, r.entry_ref) : null))), 'لا توجد مصروفات');
 }
 
 // ---------------------------------------------------------------------
@@ -188,6 +197,7 @@ async function custodyDialog(id, done) {
       h('div', { class: 'help', style: { margin: '0 0 10px' } }, `${c.company_name} — ${c.purpose}`, c.project_code ? ` — ${c.project_code}` : '', ` — فُتحت ${fmt.date(c.opened_date)}`,
         c.user_name ? ` — تظهر في حساب ${c.user_name}` : ' — غير مربوطة بمستخدم', c.is_acc ? ` — حساب ${c.account_code} ${c.account_name}` : '',
         c.state === 'closed' ? h('span', { class: 'badge', style: { marginInlineStart: '8px' } }, 'مقفلة') : null),
+      c.last_note && c.state === 'open' ? h('div', { class: 'notice warn', style: { marginBottom: '10px' } }, c.last_note) : null,
       others.length ? h('div', { class: 'notice warn', style: { marginBottom: '10px' } }, 'على حامل العهدة عهد أخرى مفتوحة: ',
         others.map((o) => `${o.custody_no} (${num(o.balance)})`).join('، ')) : null,
       rejected.length ? h('div', { class: 'notice bad', style: { marginBottom: '10px' } }, `${rejected.length} سطر مرفوض بمبلغ ${num(rejected.reduce((s, r) => s + Number(r.amount), 0))} — باقٍ على حامل العهدة ضمن الرصيد.`) : null,
@@ -392,13 +402,16 @@ async function postDialog(lines, done) {
   // حسابات الجاري بين الشركات
   const ic = {};
   if (crossLines.length && !manual) cos.forEach((c) => { ic[c] = combo({ options: postable(c, (a) => ['asset', 'liability'].includes(a.account_type) && !a.is_cash_account), listKey: 'cu-ic-' + c, value: mem('ic-' + c), placeholder: 'حساب جاري الشركات الشقيقة' }); });
+  // القيد اليدوي: رقم القيد في شركة العهدة (دائن حساب العهدة) وفي كل شركة عليها مصروف — يتحقق النظام من المبالغ
+  const manRefs = {};
+  if (manual) [cco, ...new Set(crossLines.map((l) => l.expense_company_id))].forEach((c) => { manRefs[c] = h('input', { class: 'input ltr', placeholder: 'مثال: 2026-15' }); });
   const err = h('p', { class: 'notice bad', style: { display: 'none' } });
   const total = lines.reduce((s, l) => s + Number(l.amount), 0);
 
   put(m.body,
     h('div', { class: 'toolbar', style: { marginBottom: '10px' } }, h('label', {}, 'تاريخ القيد'), date, h('span', { class: 'help' }, `${lines.length} سطر — ${num(total)} — دائن حساب العهدة`)),
     crossLines.length ? h('div', { class: 'notice warn', style: { marginBottom: '10px' } }, manual
-      ? 'أسطر على شركة أخرى (الإعداد: تنبيه فقط): تُعلَّم «مرحَّلة بقيد يدوي» وتسجّل قيودها بنفسك في الشركتين.'
+      ? 'أسطر على شركة أخرى (الإعداد: تنبيه فقط): سجّل قيديها بنفسك — في شركة العهدة دائن حساب العهدة، وفي الشركة الأخرى المصروفات — ثم اكتب رقمي القيدين هنا. يتحقق النظام من المبالغ قبل الترحيل.'
       : 'أسطر على شركة أخرى: يُسجَّل قيد في كل شركة عليها مصروف (دائن مستحق لشركة العهدة) وقيد في شركة العهدة (مدين مستحق من الشقيقة).') : null,
     h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
       h('thead', {}, h('tr', {}, ['التاريخ', 'البيان والمستند', 'على شركة', 'المبلغ', 'حساب المصروف', 'المشروع', 'مركز التكلفة', 'المعدة'].map((x) => h('th', {}, x)))),
@@ -410,6 +423,8 @@ async function postDialog(lines, done) {
         r.isManual ? h('td', { colspan: 4, class: 'help' }, 'قيد يدوي') : [h('td', { style: { minWidth: '200px' } }, r.acc.el), h('td', { style: { minWidth: '130px' } }, r.project.el), h('td', { style: { minWidth: '120px' } }, r.cc.el), h('td', { style: { minWidth: '120px' } }, r.eq.el)])))))),
     vatPick ? h('div', { class: 'toolbar', style: { marginTop: '10px' } }, h('label', {}, 'حساب ضريبة المدخلات'), h('div', { style: { minWidth: '260px' } }, vatPick.el)) : null,
     Object.keys(ic).length ? h('div', { class: 'form-grid', style: { marginTop: '10px' } }, cos.map((c) => F('حساب الجاري في ' + name(c), ic[c].el, { req: true }))) : null,
+    Object.keys(manRefs).length ? h('div', { class: 'form-grid', style: { marginTop: '10px' } }, Object.entries(manRefs).map(([c, inp]) =>
+      F('رقم القيد اليدوي في ' + name(c), inp, { req: true, help: c === cco ? `دائن حساب العهدة بـ ${num(crossLines.reduce((s, l) => s + Number(l.amount), 0))}` : `مصروفات ${num(crossLines.filter((l) => l.expense_company_id === c).reduce((s, l) => s + Number(l.amount), 0))}` }))) : null,
     h('p', { class: 'help' }, 'المورد في الفاتورة الضريبية يُضاف تلقائيًا من رقمه الضريبي إن لم يكن مسجّلًا. إلغاء القيد لاحقًا يعيد الأسطر هنا للترحيل.'),
     err);
 
@@ -429,8 +444,11 @@ async function postDialog(lines, done) {
         out.push(...(res.entries || []).map((x) => `${name(x.company_id)} ${x.ref}`));
       }
       const man = rows.filter((r) => r.isManual);
-      if (man.length) await rpc('post_custody_expenses', { p_date: date.value, p_lines: man.map((r) => ({ id: r.l.id })), p_opts: { manual: true } }, 'accounting');
-      toast(out.length ? 'رُحّلت التسوية — القيد: ' + out.join(' و') : 'عُلّمت الأسطر مرحَّلة بقيد يدوي', 'ok');
+      if (man.length) {
+        const refs = Object.fromEntries(Object.entries(manRefs).map(([c, inp]) => [c, inp.value.trim()]));
+        await rpc('post_custody_expenses', { p_date: date.value, p_lines: man.map((r) => ({ id: r.l.id })), p_opts: { manual: true, manual_entries: refs } }, 'accounting');
+      }
+      toast(out.length ? 'رُحّلت التسوية — القيد: ' + out.join(' و') : 'رُبطت الأسطر بالقيدين اليدويين', 'ok');
       m.close(); done?.();
     } catch (e) { err.textContent = e.message; err.style.display = ''; } finally { go.disabled = false; }
   } }, 'اعتماد وترحيل القيد');
@@ -462,6 +480,8 @@ async function openDialog(done) {
   const err = h('p', { class: 'notice bad', style: { display: 'none' } });
   const pk = {}; let reqs = [];
   const fReq = F('طلب التحويل', req, { req: true }), fAmt = F('المبلغ', amount, { req: true }), fCash = F('يُصرف من', slot.cash, { req: true });
+  const fAcc = F('حساب العهدة', slot.acc, { req: true });
+  const fAccReq = h('div', { class: 'help', style: { gridColumn: '1 / -1' } }, 'حساب العهدة والموظف يُؤخذان من قيد سداد الطلب.');
   put(user, h('option', { value: '' }, '— غير مربوطة بمستخدم —'), (await usersList()).map((u) => h('option', { value: u.id }, u.full_name)));
 
   async function checkOpen() {
@@ -488,23 +508,23 @@ async function openDialog(done) {
     reqs = paid.filter((r) => !used.has(r.id));
     put(req, h('option', { value: '' }, reqs.length ? '— اختر الطلب —' : 'لا توجد طلبات عهدة مدفوعة غير مربوطة'), reqs.map((r) => h('option', { value: r.id }, `${r.request_no} — ${r.payee_name} — ${num(r.amount)}`)));
   }
-  const showSrc = () => { const isReq = src.value === 'request'; fReq.style.display = isReq ? '' : 'none'; fAmt.style.display = fCash.style.display = isReq ? 'none' : ''; };
+  const showSrc = () => { const isReq = src.value === 'request'; fReq.style.display = fAccReq.style.display = isReq ? '' : 'none'; fAmt.style.display = fCash.style.display = fAcc.style.display = isReq ? 'none' : ''; };
   src.onchange = showSrc; co.onchange = loadCo; user.onchange = checkOpen;
   req.onchange = () => { const r = reqs.find((x) => x.id === req.value); if (r && !purpose.value) purpose.value = r.description.slice(0, 120); };
   put(m.body, warn, h('div', { class: 'form-grid' },
     F('الشركة (مصدر النقد)', co, { req: true }), F('مصدر العهدة', src), fReq,
     F('الموظف حامل العهدة', slot.emp), F('أو الاسم', holder), F('تظهر في حساب المستخدم', user, { help: 'يرى عهدته ويُدخل مصروفاتها' }),
-    fAmt, fCash, F('التاريخ', date, { req: true }), F('حساب العهدة', slot.acc, { req: true }), F('المشروع', slot.project),
+    fAmt, fCash, F('التاريخ', date, { req: true }), fAcc, fAccReq, F('المشروع', slot.project),
     F('الغرض', purpose, { req: true, wide: true })), err);
   await loadCo(); showSrc();
   const go = h('button', { class: 'btn primary', onclick: async () => {
     err.style.display = 'none'; go.disabled = true;
     try {
       const isReq = src.value === 'request';
-      const res = await rpc('open_custody', { p: { company_id: co.value, holder_name: holder.value, employee_id: pk.emp.id || null, user_id: user.value || null, account_id: pk.acc.id || null,
+      if (isReq && !req.value) throw new Error('اختر طلب التحويل');
+      const res = await rpc('open_custody', { p: { company_id: co.value, holder_name: holder.value, employee_id: pk.emp.id || null, user_id: user.value || null, account_id: isReq ? null : pk.acc.id || null,
         project_id: pk.project.id || null, purpose: purpose.value, date: date.value, amount: isReq ? null : Number(amount.value), cash_account_id: isReq ? null : pk.cash.id || null,
         request_id: isReq ? req.value || null : null } }, 'accounting');
-      if (isReq && !req.value) throw new Error('اختر طلب التحويل');
       try { if (pk.acc.id) localStorage.setItem('erp-cu-acc-' + co.value, pk.acc.id); } catch { /* ignore */ }
       toast(`فُتحت العهدة ${res.custody_no}` + (isReq ? '' : ' وسُجّل قيد الصرف'), 'ok');
       m.close(); done?.();

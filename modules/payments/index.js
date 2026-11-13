@@ -445,17 +445,16 @@ async function payEntry(r, done) {
   const m = modal({ title: `قيد سداد الطلب ${r.request_no}`, size: 'full' });
   const editor = createEditor({ lk, company: r.company_id, entries: [entry], single: true });
   m.body.append(h('p', { class: 'notice', style: { marginBottom: '10px' } },
-    `النموذج معبّأ من الطلب: ${r.payee_name} بمبلغ ${num(r.amount)}${r.invoice_account_id ? '' : ' — اختر حساب المستفيد'}. اختر حساب البنك المدفوع منه وراجع القيد ثم احفظ، فيُربط بالطلب ويصبح «مدفوعًا».`), editor.el);
+    `النموذج معبّأ من الطلب: ${r.payee_name} بمبلغ ${num(r.amount)}${r.invoice_account_id ? '' : ' — اختر حساب المستفيد'}. اختر حساب البنك المدفوع منه وراجع القيد ثم احفظ، فيُربط بالطلب ويصبح «مدفوعًا». يجب أن يكون القيد مدينًا للمستفيد بمبلغ الطلب ودائنًا للبنك أو الصندوق، وإلا لا يُحفظ.`), editor.el);
   const save = h('button', { class: 'btn primary', onclick: async () => {
     document.activeElement?.blur(); await new Promise((x) => setTimeout(x, 20));
     let c; try { c = editor.collect(); } catch (err) { editor.showError(err.message, err.at); toast(err.message, 'bad'); return; }
     save.disabled = true;
+    // الحفظ والربط عملية واحدة في القاعدة: إذا لم يطابق القيد الطلب لا يُحفظ شيء
     let res;
-    try { res = await rpc('post_batch', { p_company: r.company_id, p_entries: c.payload }, 'accounting'); }
+    try { res = await rpc('pay_payment_request', { p_id: r.id, p_entry: c.payload[0] }, 'accounting'); }
     catch (err) { editor.showServerError(err.message, c.clean); toast(err.message, 'bad'); save.disabled = false; return; }
-    const e = res.entries[0];
-    const ok = await run(() => rpc('link_payment_entry', { p_id: r.id, p_entry: e.id }, 'accounting'));
-    toast(ok ? `سُجّل القيد ${res.fiscal_year}-${e.entry_no} وأصبح الطلب مدفوعًا` : `سُجّل القيد ${res.fiscal_year}-${e.entry_no} لكن لم يُربط — اربطه من الطلب`, ok ? 'ok' : 'bad');
+    toast(`سُجّل القيد ${res.ref} وأصبح الطلب مدفوعًا`, 'ok');
     m.close(); done();
   } }, 'حفظ القيد وربطه');
   m.foot.append(save, h('button', { class: 'btn', onclick: m.close }, 'رجوع'));
