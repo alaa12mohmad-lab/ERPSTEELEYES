@@ -27,9 +27,10 @@ import adminModule from './modules/admin/index.js';
 import accountingModule from './modules/accounting/index.js';
 import paymentsModule from './modules/payments/index.js';
 import custodyModule from './modules/custody/index.js';
+import dashboardModule from './modules/dashboard/index.js';
 
 // كل قسم جديد يُضاف هنا فقط
-const MODULES = [paymentsModule, custodyModule, accountingModule, coreModule, adminModule];
+const MODULES = [dashboardModule, paymentsModule, custodyModule, accountingModule, coreModule, adminModule];
 
 const root = document.getElementById('app');
 
@@ -298,8 +299,7 @@ function renderHome() {
   const mods = (p.modules || []).filter((m) => !['dashboard', 'assistant'].includes(m.code) && (m.level > 0 || (p.is_admin && !m.enabled)));
   const ready = (m) => m.enabled && MODULES.some((x) => x.code === m.code);
   const live = mods.filter(ready), soon = mods.filter((m) => !ready(m));
-  const widgets = state.can('dashboard', 1)
-    ? available().flatMap((m) => (m.widgets || []).filter((w) => !w.visible || w.visible())) : [];
+  const widgets = available().flatMap((m) => (m.widgets || []).filter((w) => !w.visible || w.visible()));
   const wbox = h('div', { class: 'widgets' }, widgets.map((w) => {
     const body = h('div', { style: { display: 'contents' } }, h('div', { class: 'help', style: { color: 'var(--ink-3)' } }, 'جارٍ التحميل…'));
     Promise.resolve().then(() => w.render(body)).catch((e) => body.replaceChildren(h('div', { class: 'help', style: { color: 'var(--bad)' } }, e.message)));
@@ -311,6 +311,7 @@ function renderHome() {
   const greg = new Intl.DateTimeFormat('ar-EG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
   // أزرار سريعة حسب الصلاحية
   const quick = [];
+  if (state.can('dashboard', 1)) quick.push({ t: 'لوحة التحكم', href: '#/dashboard' });
   if (state.can('accounting', 2)) quick.push({ t: 'قيد جديد', href: '#/accounting/journal', main: true, ic: 'ledger' });
   if (state.can('accounting', 1)) quick.push({ t: 'كشف حساب', href: '#/accounting/statement' }, { t: 'ميزان المراجعة', href: '#/accounting/trial-balance' }, { t: 'الإقرار الضريبي', href: '#/accounting/vat' });
 

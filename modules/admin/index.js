@@ -135,6 +135,9 @@ async function renderUsers(el) {
     const mfa = h('input', { type: 'checkbox', checked: !!u?.mfa_required });
     const scope = scopeFields(u);
     const pay = paymentFields(u);
+    const dash = h('div', { class: 'field wide' });
+    let dashSave = null;
+    if (u && !u.is_admin) import('../dashboard/index.js').then(({ cardPicker }) => cardPicker(u.id)).then((p) => { dash.replaceWith(p.ui); dashSave = p.save; }).catch((e) => dash.append(h('div', { class: 'help' }, e.message)));
     m.body.append(h('div', { class: 'form-grid' },
       h('div', { class: 'field' }, h('label', { for: 'u_name' }, 'الاسم', h('span', { class: 'req' }, '*')), name),
       h('div', { class: 'field' }, h('label', { for: 'u_email' }, 'البريد الإلكتروني (اسم الدخول)', h('span', { class: 'req' }, '*')), email,
@@ -145,7 +148,7 @@ async function renderUsers(el) {
       h('div', { class: 'field' }, h('label', { for: 'u_emp' }, 'الموظف المرتبط'), emp),
       h('div', { class: 'field' }, h('label', { class: 'check', style: { marginTop: '24px' } }, mfa, 'إلزام التحقق بخطوتين')),
       u?.is_admin ? h('div', { class: 'field wide' }, h('div', { class: 'notice' }, 'مدير النظام يرى ويدير كل شيء.')) : scope.ui,
-      pay.ui));
+      pay.ui, u && !u.is_admin ? dash : null));
 
     const save = async () => {
       if (!name.value.trim() || !email.value.trim()) { toast('الاسم والبريد الإلكتروني مطلوبان', 'bad'); return; }
@@ -165,6 +168,7 @@ async function renderUsers(el) {
           });
           if (!u.is_admin) await rpc('set_user_scope', { p_user: u.id, p_company_ids: sc.company_ids, p_project_ids: sc.project_ids });
           await pay.save(u.id);
+          if (dashSave) await dashSave(u.id);
         }
         toast('تم الحفظ', 'ok'); m.close(); load();
       } catch (e) { toast(e.message, 'bad'); } finally { btn.disabled = false; }
