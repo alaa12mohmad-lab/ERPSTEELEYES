@@ -12,12 +12,30 @@ const num = (v) => fmt.num(Number(v) || 0);
 const ymd = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const store = { get: (k) => { try { return localStorage.getItem('erp-dash-' + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('erp-dash-' + k, v); } catch { /* ignore */ } } };
 
-const PERIODS = [['1m', 'آخر شهر', 1], ['2m', 'آخر شهرين', 2], ['3m', 'آخر 3 شهور', 3], ['12m', 'آخر سنة', 12]];
+const PERIODS = [['1m', 'آخر شهر', 1], ['2m', 'آخر شهرين', 2], ['3m', 'آخر 3 شهور', 3], ['12m', 'آخر سنة', 12], ['ytd', 'من بداية السنة', 0]];
 function periodOf(code) {
-  const p = PERIODS.find((x) => x[0] === code); const to = new Date();
+  const p = PERIODS.find((x) => x[0] === code) || PERIODS[0]; const to = new Date();
+  if (code === 'ytd') return { from: ymd(new Date(to.getFullYear(), 0, 1)), to: ymd(to) };
   const from = new Date(to); from.setMonth(from.getMonth() - p[2]); from.setDate(from.getDate() + 1);
   return { from: ymd(from), to: ymd(to) };
 }
+let CMP = 'prev';   // prev: الفترة السابقة بالطول نفسه | yoy: نفس الفترة من السنة الماضية
+const cmpName = () => (CMP === 'yoy' ? 'السنة الماضية' : 'الفترة السابقة');
+
+// التقرير الذي يُفتح من كل بطاقة (يظهر الرابط لمن له صلاحية القسم)
+const LINKS = {
+  cash: ['accounting', '#/accounting/liquidity'], cashflow: ['accounting', '#/accounting/cash-flow'], receivables: ['accounting', '#/accounting/aging'],
+  payables: ['accounting', '#/accounting/aging'], commitments: ['accounting', '#/accounting/liquidity'], vat: ['accounting', '#/accounting/vat'],
+  pl: ['accounting', '#/accounting/income'], trend: ['accounting', '#/accounting/income'], top_expenses: ['accounting', '#/accounting/income'],
+  top_customers: ['accounting', '#/accounting/parties'], projects: ['accounting', '#/accounting/projects'], project_risk: ['accounting', '#/accounting/projects'],
+  contracts: ['accounting', '#/accounting/contracts'], payreq: ['payments', '#/payments/all'], custody: ['custody', '#/custody/list'],
+  overdue_inv: ['accounting', '#/accounting/aging'], equipment: ['accounting', '#/accounting/equipment'],
+  r_current: ['accounting', '#/accounting/balance-sheet'], r_quick: ['accounting', '#/accounting/balance-sheet'], r_debt: ['accounting', '#/accounting/balance-sheet'],
+  r_gross: ['accounting', '#/accounting/income'], r_net: ['accounting', '#/accounting/income'], r_dso: ['accounting', '#/accounting/aging'],
+  r_dpo: ['accounting', '#/accounting/aging'], r_retention: ['accounting', '#/accounting/parties'],
+};
+const byCo = (rows, cols) => (rows && rows.length > 1 ? h('details', { class: 'dash-table' }, h('summary', {}, 'كل شركة وحدها (قبل الاستبعاد)'),
+  list(rows, [{ t: 'الشركة', v: (r) => r.company }, ...cols])) : null);
 
 // الحكم على النسب: [جيد إذا، مقبول إذا] — والشرح يُعرض تحت كل نسبة
 const RATIOS = {
@@ -48,12 +66,13 @@ const RATIOS = {
 };
 const VERDICT = { ok: ['جيد', 'ok'], warn: ['مقبول', 'warn'], bad: ['يحتاج انتباهًا', 'bad'] };
 
-const delta = (cur, prev) => {
-  if (!prev) return cur ? h('span', { class: 'dash-delta' }, 'لا أرقام في الفترة السابقة') : null;
-  const p = ((cur - prev) / Math.abs(prev)) * 100;
-  return h('span', { class: 'dash-delta ' + (p >= 0 ? 'up' : 'down') }, `${p >= 0 ? '▲' : '▼'} ${Math.abs(p).toFixed(1)}% عن الفترة السابقة (${num(prev)})`);
+const delta = (cur, prev, lowerIsBetter = false) => {
+  if (!prev) return cur ? h('span', { class: 'dash-delta' }, `لا أرقام في ${cmpName()}`) : null;
+  const p = ((cur - prev) / Math.abs(prev)) * 100; const good = lowerIsBetter ? p <= 0 : p >= 0;
+  return h('span', { class: 'dash-delta ' + (good ? 'up' : 'down') }, `${p >= 0 ? '▲' : '▼'} ${Math.abs(p).toFixed(1)}% عن ${cmpName()} (${num(prev)})`);
 };
 const big = (v, cls = '') => h('div', { class: 'dash-big ' + cls }, num(v));
+const count = (v, cls = '') => h('div', { class: 'dash-big ' + cls }, String(Number(v) || 0));
 const line = (label, value, cls = '') => h('div', { class: 'dash-line ' + cls }, h('span', {}, label), h('b', {}, value));
 const list = (rows, cols) => (rows.length ? h('table', { class: 'dash-list' },
   h('thead', {}, h('tr', {}, cols.map((c) => h('th', { class: c.num ? 'num' : '' }, c.t)))),
@@ -65,11 +84,14 @@ const list = (rows, cols) => (rows.length ? h('table', { class: 'dash-list' },
 const DRAW = {
   cash: (d) => [big(d.value, 'accent'), h('span', { class: 'dash-delta ' + (d.value >= d.open ? 'up' : 'down') },
       `${d.value >= d.open ? '▲' : '▼'} ${num(Math.abs(d.value - d.open))} خلال الفترة (أولها ${num(d.open)})`),
-    d.by_company.length > 1 ? d.by_company.map((c) => line(c.company, num(c.value))) : null],
+    d.by_company.length > 1 ? d.by_company.map((c) => line(c.company, num(c.value))) : null,
+    d.by_company.length > 1 ? h('div', { class: 'help' }, 'التحويلات بين الشركات لا تغيّر مجموع النقدية.') : null],
   receivables: (d) => [big(d.value), line('منه متأخر عن الاستحقاق', `${num(d.overdue)} (${d.overdue_count} فاتورة)`, d.overdue > 0 ? 'bad' : ''),
-    list(d.top, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) }, { t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }])],
+    list(d.top, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) }, { t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }]),
+    byCo(d.by_company, [{ t: 'العملاء', num: true, v: (r) => num(r.ar) }])],
   payables: (d) => [big(d.value), line('منه متأخر عن الاستحقاق', `${num(d.overdue)} (${d.overdue_count} فاتورة)`, d.overdue > 0 ? 'warn' : ''),
-    list(d.top, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) }, { t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }])],
+    list(d.top, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) }, { t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }]),
+    byCo(d.by_company, [{ t: 'الموردون', num: true, v: (r) => num(r.ap) }])],
   commitments: (d) => {
     const gap = Number(d.cash) + Number(d.fixed_in) - Number(d.total);
     return [big(d.total), h('div', { class: 'help' }, `من ${fmt.date(d.from)} إلى ${fmt.date(d.to)}`),
@@ -83,10 +105,66 @@ const DRAW = {
     const c = d.cur, p = d.prev; const exp = (x) => Number(x.direct) + Number(x.opex) + Number(x.unclassified);
     return [h('div', { class: 'dash-trio' },
       h('div', {}, h('small', {}, 'الإيرادات'), big(Number(c.revenue) + Number(c.other_income)), delta(Number(c.revenue) + Number(c.other_income), Number(p.revenue) + Number(p.other_income))),
-      h('div', {}, h('small', {}, 'المصروفات'), big(exp(c)), delta(exp(c), exp(p))),
+      h('div', {}, h('small', {}, 'المصروفات'), big(exp(c)), delta(exp(c), exp(p), true)),
       h('div', {}, h('small', {}, 'صافي الربح'), big(c.net, Number(c.net) < 0 ? 'neg' : 'pos'), delta(Number(c.net), Number(p.net)))),
       line('مجمل الربح (الإيرادات − التكاليف المباشرة)', num(c.gross)), line('التكاليف المباشرة', num(c.direct)), line('المصروفات الإدارية والتمويلية والزكاة', num(c.opex)),
-      Number(c.unclassified) ? line('مصروفات على حسابات بلا مستوى في قائمة الدخل', num(c.unclassified), 'warn') : null];
+      Number(c.unclassified) ? line('مصروفات على حسابات بلا مستوى في قائمة الدخل', num(c.unclassified), 'warn') : null,
+      d.eliminated && (Number(d.eliminated.revenue) || Number(d.eliminated.expense))
+        ? h('div', { class: 'help' }, `استُبعد بين الشركات: إيرادات ${num(d.eliminated.revenue)} ومصروفات ${num(d.eliminated.expense)}`) : null,
+      byCo(d.by_company, [{ t: 'الإيرادات', num: true, v: (r) => num(r.revenue) }, { t: 'المصروفات', num: true, v: (r) => num(r.expense) },
+        { t: 'الصافي', num: true, v: (r) => h('span', { class: Number(r.net) < 0 ? 'neg' : '' }, num(r.net)) }])];
+  },
+  alerts: (d) => (d.items.length ? h('div', { class: 'dash-alerts' }, d.items.map((a) => {
+    const lbl = { bad: 'عاجل', warn: 'تنبيه', info: 'للعلم' }[a.lvl];
+    return h('a', { class: 'dash-alert ' + a.lvl, href: a.href }, h('span', { class: 'badge ' + (a.lvl === 'info' ? '' : a.lvl) }, lbl), h('span', {}, a.text));
+  })) : h('div', { class: 'dash-ok' }, '✓ لا شيء يحتاج تصرفًا الآن')),
+  cashflow: (d) => {
+    const C = { operating: 'التشغيلي', investing: 'الاستثماري', financing: 'التمويلي' };
+    const inn = d.classes.reduce((s, c) => s + Number(c.in), 0), out = d.classes.reduce((s, c) => s + Number(c.out), 0);
+    return [h('div', { class: 'dash-trio' },
+      h('div', {}, h('small', {}, 'المحصّل'), big(inn, 'pos')), h('div', {}, h('small', {}, 'المدفوع'), big(out, 'neg')),
+      h('div', {}, h('small', {}, 'الصافي'), big(inn - out, inn - out < 0 ? 'neg' : 'pos'))),
+      list(d.classes, [{ t: 'النشاط', v: (r) => C[r.class] || r.class }, { t: 'داخل', num: true, v: (r) => num(r.in) }, { t: 'خارج', num: true, v: (r) => num(r.out) },
+        { t: 'الصافي', num: true, v: (r) => num(Number(r.in) - Number(r.out)) }]),
+      d.top_out.length ? list(d.top_out, [{ t: 'أكبر المدفوعات', v: (r) => r.name }, { t: 'المبلغ', num: true, v: (r) => num(r.amount) }]) : null,
+      line('النقدية أول الفترة ← آخرها', `${num(d.open)} ← ${num(d.close)}`)];
+  },
+  vat: (d) => d.rows.map((r) => {
+    const late = r.prev_due < ymd(new Date()); const net = Number(r.prev.net);
+    return h('div', { class: 'dash-vat' }, d.rows.length > 1 ? h('b', {}, r.company) : null,
+      line(`${r.period === 'monthly' ? 'الشهر' : 'الربع'} المنتهي (${fmt.date(r.prev_from)} — ${fmt.date(r.prev_to)})`, (net >= 0 ? 'مستحق ' : 'مسترد ') + num(Math.abs(net)), net > 0 ? 'warn' : ''),
+      line('آخر موعد للإقرار والسداد', fmt.date(r.prev_due) + (late ? ' (مضى)' : ''), !late && net > 0 ? 'warn' : ''),
+      line(`الحالي حتى اليوم (مخرجات ${num(r.cur.output)} − مدخلات ${num(r.cur.input)})`, num(r.cur.net)),
+      line('رصيد حسابات الضريبة غير المسدد', num(r.balance)));
+  }),
+  top_expenses: (d) => [big(d.total), list(d.rows, [{ t: 'البند', v: (r) => `${r.code} — ${r.name}` }, { t: 'الفترة', num: true, v: (r) => num(r.cur) },
+    { t: cmpName(), num: true, v: (r) => num(r.prev) },
+    { t: 'التغير', num: true, v: (r) => (Number(r.prev) ? h('span', { class: Number(r.cur) > Number(r.prev) ? 'neg' : '' }, `${(((r.cur - r.prev) / Math.abs(r.prev)) * 100).toFixed(0)}%`) : 'جديد') }])],
+  top_customers: (d) => {
+    const top = d.rows[0]; const share = top && Number(d.total) ? (Number(top.amount) / Number(d.total)) * 100 : 0;
+    return [big(d.total), h('div', { class: 'help' }, `مفوتر لـ ${d.count} عميل في الفترة (شامل الضريبة)`),
+      share >= 40 ? line(`${top.name} وحده`, `${share.toFixed(0)}% من المفوتر — تركّز عالٍ`, 'bad') : null,
+      list(d.rows, [{ t: 'العميل', v: (r) => r.name }, { t: 'المفوتر', num: true, v: (r) => num(r.amount) },
+        { t: 'النصيب', num: true, v: (r) => (Number(d.total) ? `${((r.amount / d.total) * 100).toFixed(0)}%` : '') }])];
+  },
+  contracts: (d) => [h('div', { class: 'dash-trio' },
+      h('div', {}, h('small', {}, `قيمة ${d.count} عقدًا`), big(d.value)), h('div', {}, h('small', {}, 'المنفّذ'), big(d.work),
+        h('span', { class: 'help' }, Number(d.value) ? `${((d.work / d.value) * 100).toFixed(0)}%` : '')),
+      h('div', {}, h('small', {}, 'الباقي تنفيذه'), big(d.backlog, 'accent'))),
+    line('مفوتر غير محصّل', num(d.outstanding)), line('محتجزات لدى العملاء', num(d.retention)), Number(d.advance_left) ? line('دفعات مقدمة لم تُسترد بعد', num(d.advance_left)) : null,
+    list(d.rows, [{ t: 'العقد', v: (r) => `${r.no} — ${r.party}` }, { t: 'القيمة', num: true, v: (r) => num(r.value) },
+      { t: 'المنفّذ', num: true, v: (r) => `${num(r.work)}${Number(r.value) ? ` (${((r.work / r.value) * 100).toFixed(0)}%)` : ''}` }, { t: 'الباقي', num: true, v: (r) => num(r.backlog) }]),
+    d.sub_count ? line(`مقاولو الباطن (${d.sub_count}): المنفّذ ${num(d.sub_work)} من ${num(d.sub_value)}`, `مستحق لهم ${num(d.sub_outstanding)} — محتجز ${num(d.sub_retention)}`) : null,
+    h('div', { class: 'help' }, 'حتى اليوم، من العقود السارية ومستخلصاتها.')],
+  project_risk: (d) => {
+    const L = { bad: ['خسارة', 'bad'], warn: ['هامش ضعيف', 'warn'], ok: ['سليم', 'ok'] };
+    return [h('div', { class: 'dash-trio' },
+      h('div', {}, h('small', {}, 'مصروفه أكبر من المكتسب'), count(d.bad, d.bad ? 'neg' : '')), h('div', {}, h('small', {}, 'هامش أقل من 15%'), count(d.warn)),
+      h('div', {}, h('small', {}, 'سليمة'), count(d.ok, 'pos'))),
+      list(d.rows, [{ t: 'المشروع', v: (r) => `${r.code} — ${r.name}` }, { t: 'المكتسب', num: true, v: (r) => num(r.earned) }, { t: 'المصروف', num: true, v: (r) => num(r.cost) },
+        { t: 'المصروف ÷ المكتسب', num: true, v: (r) => (Number(r.earned) ? `${((r.cost / r.earned) * 100).toFixed(0)}%` : '—') },
+        { t: '', v: (r) => h('span', { class: 'badge ' + L[r.lvl][1] }, L[r.lvl][0]) }]),
+      h('div', { class: 'help' }, 'المكتسب: المنفّذ في مستخلصات العقد، وإلا الإيراد المسجّل على المشروع. المصروف: كل ما حُمّل على المشروع حتى آخر الفترة. حين تُضاف الموازنات يُقارن المصروف بالتكلفة المقدّرة.')];
   },
   trend: (d) => trendChart(d.months),
   projects: (d) => [h('div', { class: 'dash-trio' },
@@ -101,7 +179,7 @@ const DRAW = {
       h('div', {}, h('small', {}, 'موقوفة'), big(d.hold), h('span', { class: 'help' }, `${d.hold_n} طلب`))),
     line('تجاوزت آخر موعد للتحويل', `${num(d.overdue)} (${d.overdue_n} طلب)`, d.overdue_n ? 'bad' : ''), d.urgent_n ? line('عاجلة', String(d.urgent_n), 'warn') : null],
   custody: (d) => [h('div', { class: 'dash-trio' },
-      h('a', { href: '#/custody/list' }, h('small', {}, 'عهد مفتوحة'), big(d.count)), h('div', {}, h('small', {}, 'أرصدتها'), big(d.balance)),
+      h('a', { href: '#/custody/list' }, h('small', {}, 'عهد مفتوحة'), count(d.count)), h('div', {}, h('small', {}, 'أرصدتها'), big(d.balance)),
       h('div', {}, h('small', {}, 'مصروفات لم تُرحَّل'), big(d.pending))),
     d.old_n ? line('مفتوحة منذ أكثر من 30 يومًا', String(d.old_n), 'warn') : null,
     list(d.rows, [{ t: 'أقدم العهد', v: (r) => `${r.no} — ${r.holder}` }, { t: 'الرصيد', num: true, v: (r) => num(r.balance) }, { t: 'معلّق', num: true, v: (r) => (Number(r.pending) ? num(r.pending) : '') }, { t: 'منذ', num: true, v: (r) => `${r.days} يوم` }])],
@@ -172,10 +250,16 @@ async function renderBoard(el) {
   const onDate = () => { period = 'custom'; store.set('period', 'custom'); store.set('from', from.value); store.set('to', to.value); drawSeg(); load(); };
   from.onchange = onDate; to.onchange = onDate;
   drawSeg();
+  CMP = store.get('cmp') === 'yoy' ? 'yoy' : 'prev';
+  const cmpSel = h('select', { class: 'input', style: { width: 'auto' } }, h('option', { value: 'prev', selected: CMP === 'prev' }, 'مقارنة بالفترة السابقة'),
+    h('option', { value: 'yoy', selected: CMP === 'yoy' }, 'مقارنة بنفس الفترة من السنة الماضية'));
+  cmpSel.onchange = () => { CMP = cmpSel.value; store.set('cmp', CMP); load(); };
   const coLbl = h('span', { class: 'help' });
+  const printHead = h('div', { class: 'dash-print-head' });
   const body = h('div');
   put(el, h('div', { class: 'card dash-bar' }, h('div', { class: 'toolbar' }, seg, h('label', {}, 'من'), from, h('label', {}, 'إلى'), to,
-    h('div', { class: 'grow' }), coLbl, h('button', { class: 'btn ghost', onclick: () => load() }, 'تحديث'))), body);
+    cmpSel, h('div', { class: 'grow' }), coLbl, h('button', { class: 'btn ghost', onclick: () => load() }, 'تحديث'),
+    h('button', { class: 'btn', onclick: () => window.print() }, 'طباعة / PDF'))), printHead, body);
 
   let seq = 0;
   async function load() {
@@ -185,9 +269,10 @@ async function renderBoard(el) {
     coLbl.textContent = all ? 'كل الشركات' : sel.map((id) => state.companyName(id)).join(' + ');
     put(body, h('div', { class: 'empty' }, 'جارٍ الحساب…'));
     let data;
-    try { data = await rpc('dash_data', { p_cards: cards, p_companies: sel, p_from: from.value, p_to: to.value }, 'accounting'); }
+    try { data = await rpc('dash_data', { p_cards: cards, p_companies: sel, p_from: from.value, p_to: to.value, p_compare: CMP }, 'accounting'); }
     catch (e) { if (my === seq) put(body, h('div', { class: 'notice bad' }, e.message)); return; }
     if (my !== seq) return;
+    put(printHead, h('h2', {}, 'لوحة التحكم — ' + coLbl.textContent), h('div', {}, `الفترة ${fmt.date(data._meta.from)} — ${fmt.date(data._meta.to)} — طُبعت ${fmt.date(ymd(new Date()))}`));
     const groups = [];
     for (const code of cards) {
       const m = meta[code]; let g = groups.find((x) => x.name === m.grp);
@@ -198,11 +283,14 @@ async function renderBoard(el) {
       h('div', { class: 'dash-grid' }, g.items.map((code) => {
         const m = meta[code]; let inner;
         try { inner = DRAW[code](data[code] || {}); } catch (e) { inner = h('div', { class: 'notice bad' }, e.message); }
-        return h('section', { class: 'dash-card' + (['pl', 'trend', 'projects', 'equipment'].includes(code) ? ' wide' : '') },
-          h('header', {}, h('h3', {}, m.title), h('small', {}, m.hint)), h('div', { class: 'dash-body' }, inner));
+        const lk = LINKS[code];
+        return h('section', { class: 'dash-card' + (['pl', 'trend', 'projects', 'equipment', 'alerts', 'contracts', 'project_risk', 'top_expenses'].includes(code) ? ' wide' : '') },
+          h('header', {}, h('div', { class: 'dash-head' }, h('h3', {}, m.title), lk && state.can(lk[0], 1) ? h('a', { class: 'dash-more', href: lk[1] }, 'التفاصيل ←') : null),
+            h('small', {}, m.hint)), h('div', { class: 'dash-body' }, inner));
       }))]),
     h('p', { class: 'help', style: { marginTop: '14px' } },
-      `الفترة ${fmt.date(data._meta.from)} — ${fmt.date(data._meta.to)} (${data._meta.days} يومًا)، والسابقة للمقارنة ${fmt.date(data._meta.prev_from)} — ${fmt.date(data._meta.prev_to)}. `,
+      `الفترة ${fmt.date(data._meta.from)} — ${fmt.date(data._meta.to)} (${data._meta.days} يومًا)، والمقارنة بـ ${fmt.date(data._meta.prev_from)} — ${fmt.date(data._meta.prev_to)}. `,
+      data._meta.multi ? 'أكثر من شركة: الأرقام مجمّعة بعد استبعاد التعاملات بين الشركات (الذمم المتبادلة والبيع والشراء بينها)، وأرقام كل شركة وحدها داخل البطاقات. ' : '',
       'الأرصدة في آخر الفترة، والإيرادات والمصروفات خلالها، من القيود السارية فقط (دون قيود الافتتاح والإقفال).'));
   }
   load();
