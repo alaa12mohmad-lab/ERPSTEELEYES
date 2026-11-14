@@ -65,7 +65,7 @@ export function renderAccounts(el) {
       filter: (q) => q.eq('company_id', company),
       order: [{ col: 'sort_path' }],
       searchKeys: ['code', 'name'],
-      defaults: () => ({ company_id: company, is_postable: true, party_rule: 'optional', project_rule: 'optional', cost_center_rule: 'optional', equipment_rule: 'optional', vat_role: 'none' }),
+      defaults: () => ({ company_id: company, is_postable: true, party_bucket: 'main', party_rule: 'optional', project_rule: 'optional', cost_center_rule: 'optional', equipment_rule: 'optional', vat_role: 'none' }),
       columns: [
         { key: 'code', label: 'الكود', render: (r) => h('span', { class: 'ltr', style: { fontWeight: r.is_postable ? 400 : 700 } }, r.code) },
         { key: 'name', label: 'الاسم', render: (r) => h('span', { class: 'tree-name', style: { paddingInlineStart: (r.depth * 22) + 'px', fontWeight: r.is_postable ? 400 : 700 } },
@@ -77,7 +77,7 @@ export function renderAccounts(el) {
         { key: 'cls', label: 'التبويب', render: (r) => (r.is_postable ? [lbl(BS, r.bs_section) || lbl(INC, r.income_level), lbl(CF, r.cashflow_class)].filter(Boolean).join(' • ') : '') },
         { key: 'rules', label: 'طرف / مشروع / مركز / معدة', render: (r) => (r.is_postable
           ? `${r.party_kind ? ruleShort[r.party_rule] + ' (' + lbl(PK, r.party_kind) + ')' : '—'} / ${ruleShort[r.project_rule]} / ${ruleShort[r.cost_center_rule]} / ${ruleShort[r.equipment_rule]}` : '') },
-        { key: 'flags', label: 'خصائص', render: (r) => [r.is_cash_account && 'نقدية', r.is_control_account && 'رقابة', r.vat_role !== 'none' && lbl(VAT, r.vat_role)].filter(Boolean).join('، ') },
+        { key: 'flags', label: 'خصائص', render: (r) => [r.is_cash_account && 'نقدية', r.is_control_account && 'رقابة', r.vat_role !== 'none' && lbl(VAT, r.vat_role), r.party_bucket === 'retention' && 'محتجزات', r.party_bucket === 'advance' && 'دفعات مقدمة'].filter(Boolean).join('، ') },
       ],
       fields: [
         { key: 'company_id', label: 'الشركة', type: 'select', required: true, readonly: true, options: opts.companies(), importable: false },
@@ -95,6 +95,9 @@ export function renderAccounts(el) {
         { key: 'cashflow_class', label: 'تصنيف التدفق النقدي', type: 'select', options: opts.list(CF), help: 'حسابات الصندوق والبنوك = نقدية' },
         { key: 'party_kind', label: 'حساب أطراف', type: 'select', options: opts.list(PK),
           help: 'لحسابات العملاء والموردين وذمم الموظفين (أصل أو التزام): تُحسب منها أرصدة الأطراف وكشوفها والفواتير. في حساب إيراد أو مصروف يحدد قائمة الطرف فقط ولا يدخل في الأرصدة. اتركه فارغًا إذا كان الطرف مجرد مرجع للتتبع' },
+        { key: 'party_bucket', label: 'نوع حساب الطرف', type: 'select', required: true, default: 'main',
+          options: opts.list([['main', 'رئيسي (عملاء / موردون / ذمم)'], ['retention', 'محتجزات'], ['advance', 'دفعات مقدمة']]),
+          help: 'كشف الطرف يبني رصيده على الحساب الرئيسي، ويعرض المحتجزات والدفعات المقدمة كلًّا برصيده تحته' },
         { key: 'party_rule', label: 'الطرف في السطر', type: 'select', required: true, default: 'optional', options: opts.list(PARTY_RULES),
           help: 'إجباري: يجب كتابة طرف في كل سطر على هذا الحساب' },
         { key: 'project_rule', label: 'المشروع', type: 'select', required: true, default: 'optional', options: opts.list(RULES) },

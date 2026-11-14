@@ -213,7 +213,7 @@ export async function renderStatement(el) {
     accP.resolve(); partyP.resolve(); projP.resolve(); eqP.resolve();
     const pOpt = partyP.id ? [...lk.parties, ...lk.employees].find((x) => x.id === partyP.id) : null;
     const isEmp = pOpt && lk.employees.some((x) => x.id === pOpt.id);
-    let rows; let title;
+    let rows; let title; let extra = [];
     if (kind.value === 'account') {
       if (!accP.id) throw new Error('اختر الحساب');
       const accId = parseAcc(accP.id).account;
@@ -222,7 +222,10 @@ export async function renderStatement(el) {
       title = 'كشف حساب ' + lk.byId('accounts', accId).label + (pOpt ? ' — ' + pOpt.name : '');
     } else {
       if (!partyP.id) throw new Error('اختر الطرف أو الموظف');
-      rows = await rpc('party_statement', { p_company: company, p_party: isEmp ? null : partyP.id, p_employee: isEmp ? partyP.id : null, p_from: from.value, p_to: to.value }, 'accounting');
+      const all = await rpc('party_statement', { p_company: company, p_party: isEmp ? null : partyP.id, p_employee: isEmp ? partyP.id : null, p_from: from.value, p_to: to.value }, 'accounting');
+      // الرصيد الجاري على الحساب الرئيسي، والمحتجزات والدفعات المقدمة كلٌّ على حدة تحته
+      rows = all.filter((r) => (r.bucket || 'main') === 'main');
+      extra = all.filter((r) => (r.bucket || 'main') !== 'main');
       title = 'كشف ' + pOpt.label;
     }
     const lines = rows.filter((r) => r.row_kind === 'line');
@@ -241,8 +244,36 @@ export async function renderStatement(el) {
           h('td', { class: neg(r.balance) }, N(r.balance))))),
         h('tfoot', {}, h('tr', {}, h('td', { colspan: 7 }, `حركة الفترة (${lines.length})`), h('td', { class: 'num' }, N(totD)), h('td', { class: 'num' }, N(totC)),
           h('td', { class: neg(last?.balance) }, N(last?.balance))))))));
+    // ملخص: الرصيد الرئيسي + المحتجزات + الدفعات المقدمة (كل حساب برصيده آخر الفترة)
+    const BK = { retention: 'محتجزات', advance: 'دفعات مقدمة' };
+    const groups = [];
+    for (const r of extra) {
+      let g = groups.find((x) => x.code === r.account_code);
+      if (!g) { g = { code: r.account_code, name: r.account_name, bucket: r.bucket, rows: [] }; groups.push(g); }
+      g.rows.push(r); if (r.account_name) g.name = r.account_name;
+    }
+    const summary = [];
+    if (groups.length) {
+      const mainBal = Number(last?.balance || 0);
+      const parts = groups.map((g) => ({ ...g, bal: Number(g.rows[g.rows.length - 1].balance) }));
+      summary.push(['الرصيد (' + (lines[0]?.account_name || 'الحساب الرئيسي') + ')', mainBal],
+        ...parts.map((g) => [g.name + ' — ' + BK[g.bucket], g.bal]), ['إجمالي المستحق', mainBal + parts.reduce((s, g) => s + g.bal, 0)]);
+      out.append(h('div', { class: 'card', style: { marginTop: '12px' } },
+        h('div', { class: 'toolbar' }, h('strong', {}, 'الملخص'), h('span', { class: 'help' }, 'الرصيد أعلاه بدون المحتجزات والدفعات المقدمة — هذه أرصدتها')),
+        h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' }, h('tbody', {},
+          summary.map((x, i) => h('tr', { class: i === summary.length - 1 ? 'group' : '' }, h('td', {}, x[0]), h('td', { class: neg(x[1]) }, N(x[1]))))))),
+        ...parts.map((g) => h('details', { style: { marginTop: '8px' } }, h('summary', {}, `حركة ${g.name} (${g.rows.filter((r) => r.row_kind === 'line').length})`),
+          h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
+            h('thead', {}, h('tr', {}, ['التاريخ', 'القيد', 'البيان', 'الفاتورة', 'المشروع', 'مدين', 'دائن', 'الرصيد'].map((t) => h('th', {}, t)))),
+            h('tbody', {}, g.rows.map((r) => h('tr', { class: r.row_kind === 'opening' ? 'group' : '', onclick: () => r.entry_id && openEntry(r.entry_id) },
+              h('td', {}, fmt.date(r.entry_date)), h('td', { class: 'ltr' }, r.entry_ref || ''), h('td', { style: { whiteSpace: 'normal', maxWidth: '360px' } }, r.description),
+              h('td', { class: 'ltr' }, r.invoice_no || ''), h('td', {}, r.project_name || ''),
+              h('td', { class: 'num' }, Number(r.debit) ? N(r.debit) : ''), h('td', { class: 'num' }, Number(r.credit) ? N(r.credit) : ''),
+              h('td', { class: neg(r.balance) }, N(r.balance)))))))))));
+    }
     return { name: title, aoa: [['التاريخ', 'القيد', 'الحساب', 'البيان', 'الفاتورة', 'الطرف/المشروع', 'المشروع', 'مدين', 'دائن', 'الرصيد'],
-      ...rows.map((r) => [r.entry_date, r.entry_ref || '', isAcc ? r.account_code : r.account_name, r.description, r.invoice_no || '', isAcc ? r.party_name : r.project_name, isAcc ? r.project_name : '', Number(r.debit), Number(r.credit), Number(r.balance)])] };
+      ...rows.map((r) => [r.entry_date, r.entry_ref || '', isAcc ? r.account_code : r.account_name, r.description, r.invoice_no || '', isAcc ? r.party_name : r.project_name, isAcc ? r.project_name : '', Number(r.debit), Number(r.credit), Number(r.balance)]),
+      ...(summary.length ? [[], ['الملخص'], ...summary.map((x) => [x[0], '', '', '', '', '', '', '', '', x[1]])] : [])] };
   });
   if (pendingStatement) {
     const d = pendingStatement; pendingStatement = null;
