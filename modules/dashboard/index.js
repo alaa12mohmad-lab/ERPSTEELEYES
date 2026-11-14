@@ -288,7 +288,7 @@ async function renderBoard(el) {
         try { inner = DRAW[code](data[code] || {}); } catch (e) { inner = h('div', { class: 'notice bad' }, e.message); }
         const lk = LINKS[code]; const tag = scopeTag(code, data._meta.multi);
         const more = details.includes(code)
-          ? h('button', { class: 'dash-more', onclick: () => detailDialog(code, m.title, { from: from.value, to: to.value, companies: ids() }) }, 'القائمة ←')
+          ? h('button', { class: 'dash-more', onclick: () => detailDialog(code, m.title, { from: from.value, to: to.value, companies: ids(), card: data[code] }) }, 'القائمة ←')
           : lk && state.can(lk[0], 1) ? h('a', { class: 'dash-more', href: lk[1] }, 'التفاصيل ←') : null;
         return h('section', { class: 'dash-card' + (['pl', 'trend', 'projects', 'equipment', 'alerts', 'contracts', 'project_risk', 'top_expenses'].includes(code) ? ' wide' : '') },
           h('header', {}, h('div', { class: 'dash-head' }, h('h3', {}, m.title), more),
@@ -371,11 +371,20 @@ async function detailDialog(code, title, p) {
   const m = modal({ title: 'تفاصيل: ' + title, size: 'wide' });
   put(m.body, h('div', { class: 'empty' }, 'جارٍ التحميل…'));
   try {
-    const res = await rpc('dash_detail', { p_card: code, p_companies: p.companies, p_from: p.from, p_to: p.to }, 'accounting');
+    const res = await rpc('dash_detail', { p_card: code, p_companies: p.companies, p_from: p.from, p_to: p.to, p_compare: CMP }, 'accounting');
     let cols = DETAIL_COLS[['receivables', 'payables', 'overdue_inv'].includes(code) ? 'inv' : code];
     if (res.multi && res.rows.length && res.rows[0].company) cols = [{ t: 'الشركة', v: (r) => r.company }, ...cols];
-    put(m.body, h('div', { class: 'help', style: { marginBottom: '8px' } }, `${res.rows.length} سطر${res.rows.length >= 1000 ? ' (أول 1,000)' : ''}`),
-      h('div', { class: 'table-wrap' }, list(res.rows, cols)));
+    // العملاء والموردون: القائمة فواتير لها متبقٍ — والفرق عن صافي الرصيد دفعات غير موزعة على فواتير أو أرصدة دائنة
+    let gap = null;
+    if (['receivables', 'payables'].includes(code) && p.card && res.rows.length < 1000) {
+      const sumRem = res.rows.reduce((s, r) => s + Number(r.remaining), 0); const diff = sumRem - Number(p.card.value);
+      if (Math.abs(diff) >= 0.01) gap = h('div', { class: 'notice', style: { marginBottom: '8px' } },
+        `مجموع المتبقي من الفواتير ${num(sumRem)} وصافي الرصيد في البطاقة ${num(p.card.value)}: الفرق ${num(diff)} دفعات أو إشعارات غير مربوطة برقم فاتورة، أو أرصدة دائنة.`);
+    }
+    const cmpTxt = code === 'top_expenses' ? ` — المقارنة بـ ${cmpName()}` : '';
+    put(m.body, h('div', { class: 'help', style: { marginBottom: '8px' } },
+      `${['receivables', 'payables', 'overdue_inv'].includes(code) ? 'الفواتير التي لها متبقٍ — ' : ''}${res.rows.length} سطر${res.rows.length >= 1000 ? ' (أول 1,000)' : ''}${cmpTxt}`),
+      gap, h('div', { class: 'table-wrap' }, list(res.rows, cols)));
   } catch (e) { put(m.body, h('div', { class: 'notice bad' }, e.message)); }
   m.foot.append(h('button', { class: 'btn', onclick: m.close }, 'إغلاق'));
 }
