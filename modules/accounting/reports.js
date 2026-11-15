@@ -516,6 +516,57 @@ async function equipmentDetail(q, from, to) {
 }
 
 // ---------------------------------------------------------------------
+// مراكز التكلفة: مصروف كل مركز في الفترة، وتفاصيله بالحساب والقيد
+// ---------------------------------------------------------------------
+export function renderCostCenters(el) {
+  const from = h('input', { class: 'input', type: 'date', style: { width: 'auto' }, value: yearStart() });
+  const to = h('input', { class: 'input', type: 'date', style: { width: 'auto' }, value: today() });
+  const go = frame(el, [h('span', { class: 'help' }, 'الشركات حسب اختيارك أعلى الشاشة'), h('span', {}, 'من'), from, h('span', {}, 'إلى'), to], async (out) => {
+    const rows = await rpc('cost_center_summary', { p_companies: companiesArg(), p_from: from.value || null, p_to: to.value || null }, 'accounting');
+    const t = rows.reduce((s, r) => { s.e += Number(r.expense); s.r += Number(r.revenue); return s; }, { e: 0, r: 0 });
+    out.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('strong', {}, 'مراكز التكلفة: المصروف في الفترة'),
+      h('span', { class: 'help' }, '«بدون مركز تكلفة» = مصروفات على حسابات تقبل مركزًا ولم يُختر لها. اضغط على أي سطر للتفاصيل.')),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
+        h('thead', {}, h('tr', {}, ['الكود', 'مركز التكلفة', 'الشركة', 'المصروف', 'الإيراد', 'عدد الأسطر'].map((x) => h('th', {}, x)))),
+        h('tbody', {}, rows.length ? rows.map((r) => h('tr', { onclick: () => costCenterDetail(r, from.value, to.value) },
+          h('td', { class: 'ltr' }, r.code || '—'), h('td', {}, r.cost_center_id ? r.name : h('span', { class: 'badge warn' }, r.name)),
+          h('td', {}, r.company_id ? state.companyName(r.company_id) : (r.cost_center_id ? 'كل الشركات' : '')),
+          h('td', { class: 'num' }, N(r.expense)), h('td', { class: 'num' }, Number(r.revenue) ? N(r.revenue) : ''), h('td', { class: 'num' }, r.lines)))
+          : h('tr', {}, h('td', { colspan: 6, class: 'empty' }, 'لا توجد حركات على مراكز التكلفة في الفترة'))),
+        h('tfoot', {}, h('tr', {}, h('td', { colspan: 3 }, 'الإجمالي'), h('td', { class: 'num' }, N(t.e)), h('td', { class: 'num' }, t.r ? N(t.r) : ''), h('td', {})))))));
+    return { name: 'تقرير مراكز التكلفة', aoa: [['الكود', 'مركز التكلفة', 'الشركة', 'المصروف', 'الإيراد', 'عدد الأسطر'],
+      ...rows.map((r) => [r.code || '', r.name, r.company_id ? state.companyName(r.company_id) : '', Number(r.expense), Number(r.revenue), Number(r.lines)])] };
+  });
+  const off = state.onCompaniesChange(() => { if (document.body.contains(el)) go(); else off(); });
+  go();
+}
+
+async function costCenterDetail(c, from, to) {
+  const m = modal({ title: c.cost_center_id ? `مركز التكلفة ${c.code} — ${c.name}` : 'مصروفات بدون مركز تكلفة', size: 'wide' });
+  const rows = await rpc('cost_center_detail', { p_cost_center: c.cost_center_id, p_companies: companiesArg(), p_from: from || null, p_to: to || null }, 'accounting');
+  if (!rows.length) { m.body.append(h('div', { class: 'empty' }, 'لا توجد حركات')); return; }
+  // ملخص بالحساب ثم الأسطر
+  const byAcc = [];
+  for (const r of rows) {
+    let g = byAcc.find((x) => x.code === r.account_code);
+    if (!g) { g = { code: r.account_code, name: r.account_name, amount: 0, rows: [] }; byAcc.push(g); }
+    g.amount += Number(r.amount); g.rows.push(r);
+  }
+  const total = byAcc.reduce((s, g) => s + g.amount, 0);
+  m.body.append(h('table', { class: 'grid report' },
+    h('thead', {}, h('tr', {}, ['الحساب', 'المبلغ', 'النسبة'].map((x) => h('th', {}, x)))),
+    h('tbody', {}, byAcc.map((g) => h('tr', { style: { cursor: 'default' } }, h('td', {}, `${g.code} — ${g.name}`), h('td', { class: 'num' }, N(g.amount)),
+      h('td', { class: 'num' }, total ? (g.amount / total * 100).toFixed(1) + '%' : '')))),
+    h('tfoot', {}, h('tr', {}, h('td', {}, 'الإجمالي'), h('td', { class: 'num' }, N(total)), h('td', {})))),
+  ...byAcc.map((g) => h('details', { style: { marginTop: '8px' } }, h('summary', {}, `${g.code} — ${g.name} (${g.rows.length})`),
+    h('table', { class: 'grid report' },
+      h('thead', {}, h('tr', {}, ['التاريخ', 'القيد', 'الشركة', 'البيان', 'المشروع', 'المبلغ'].map((x) => h('th', {}, x)))),
+      h('tbody', {}, g.rows.map((r) => h('tr', { onclick: () => openEntry(r.entry_id) },
+        h('td', {}, fmt.date(r.entry_date)), h('td', { class: 'ltr' }, r.entry_ref), h('td', {}, state.companyName(r.company_id)),
+        h('td', { style: { whiteSpace: 'normal', maxWidth: '380px' } }, r.description), h('td', {}, r.project_name || ''), h('td', { class: 'num' }, N(r.amount)))))))));
+}
+
+// ---------------------------------------------------------------------
 // الإقرار الضريبي (ربع سنوي أو شهري حسب إعداد الشركة)
 // ---------------------------------------------------------------------
 const CAT = { standard: 'الأساسية', zero: 'الصفرية', exempt: 'المعفاة' };
