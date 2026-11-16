@@ -323,7 +323,8 @@ export default {
             { key: 'kind', label: 'النوع', type: 'select', required: true, readonlyOnEdit: true, options: opts.list(KINDS) },
             { key: 'code', label: 'الكود', required: true, readonlyOnEdit: true, ltr: true },
             { key: 'name', label: 'الاسم', required: true },
-            { key: 'parent_id', label: 'تابع لـ', type: 'select', options: opts.table('categories', { label: (r) => r.name }) },
+            { key: 'parent_id', label: 'تابع لـ', type: 'select', dependsOn: 'kind', options: opts.table('categories', { label: (r) => r.name, dep: (r) => r.kind }),
+              help: 'اتركه فارغًا للتصنيف الرئيسي. القائمة تعرض تصنيفات النوع نفسه فقط' },
           ],
         });
       },

@@ -21,6 +21,7 @@ const COLS = [
   ['base', 'المبلغ الخاضع', false, 'لسطر حساب الضريبة (فارغ = الضريبة ÷ 15%)'],
   ['cat', 'الفئة الضريبية', false, 'صفري / معفى (لسطر الإيراد أو المصروف)'],
   ['project', 'المشروع', false, 'كود المشروع'], ['cc', 'مركز التكلفة', false, 'كود المركز'], ['eq', 'المعدة', false, 'كود المعدة'],
+  ['item', 'البند', false, 'كود أو اسم البند (التصنيفات ← نوع مصروف)'],
   ['note', 'بيان السطر', false, ''],
 ];
 const TYPES = { 'عادي': 'regular', '': 'regular', 'افتتاحي': 'opening', 'تسوية': 'adjustment', regular: 'regular', opening: 'opening', adjustment: 'adjustment' };
@@ -116,6 +117,7 @@ export function renderImport(el) {
       const pj = get(row, 'project'); if (String(pj).trim()) { const p = findBy(lk.projects, pj, 'code', 'name'); if (p) l.project_id = p.id; else err(`المشروع «${pj}» غير موجود أو الشركة غير مشاركة فيه`); }
       const cc = get(row, 'cc'); if (String(cc).trim()) { const p = findBy(lk.costCenters, cc, 'code', 'name'); if (p) l.cost_center_id = p.id; else err(`مركز التكلفة «${cc}» غير موجود`); }
       const eq = get(row, 'eq'); if (String(eq).trim()) { const p = findBy(lk.equipment, eq, 'code'); if (p) l.equipment_id = p.id; else err(`المعدة «${eq}» غير موجودة`); }
+      const it = get(row, 'item'); if (String(it ?? '').trim()) { const p = findBy(lk.items || [], it, 'code', 'name'); if (p) l.item_id = p.id; else err(`البند «${it}» غير موجود في التصنيفات (نوع مصروف)`); }
       const inv = String(get(row, 'inv') ?? '').trim(); if (inv) l.invoice_no = inv;
       const id = toDate(get(row, 'invdate')); if (id) { if (id.startsWith('خطأ')) err('تاريخ الفاتورة غير صحيح'); else l.invoice_date = id; }
       const du = toDate(get(row, 'due')); if (du) { if (du.startsWith('خطأ')) err('تاريخ الاستحقاق غير صحيح'); else l.due_date = du; }

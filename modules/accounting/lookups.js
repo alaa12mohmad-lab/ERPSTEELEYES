@@ -15,7 +15,7 @@ export async function loadLookups(company, { force = false } = {}) {
   // المفتاح يشمل المستخدم: قوائم مستخدم لا تُعاد لغيره أبدًا (احتياطًا فوق إعادة تحميل الصفحة عند الخروج)
   const key = `${state.profile?.id || ''}|${company}`;
   if (!force && cache.has(key)) return cache.get(key);
-  const [accounts, parties, employees, projects, costCenters, equipment, settings] = await Promise.all([
+  const [accounts, parties, employees, projects, costCenters, equipment, settings, items] = await Promise.all([
     acc.from('accounts').select('*').eq('company_id', company).eq('status', 'active').order('code'),
     core.from('parties').select('id, code, name, is_customer, is_supplier, tax_number').eq('status', 'active').order('code'),
     core.from('employees').select('id, employee_no, full_name, company_id, end_date').eq('company_id', company).eq('status', 'active').order('employee_no'),
@@ -23,6 +23,7 @@ export async function loadLookups(company, { force = false } = {}) {
     core.from('cost_centers').select('id, code, name, company_id').eq('status', 'active').order('code'),
     core.from('equipment').select('id, code, name, company_id').eq('status', 'active').order('code'),
     core.from('settings').select('key, company_id, value').in('key', ['vat.rate', 'vat.period']).eq('status', 'active'),
+    core.from('categories').select('id, code, name').eq('kind', 'expense_type').eq('status', 'active').order('code'),
   ]);
   const setting = (k, d) => {
     const rows = (settings.data || []).filter((r) => r.key === k);
@@ -40,6 +41,8 @@ export async function loadLookups(company, { force = false } = {}) {
     allProjects: (projects.data || []).map((r) => opt(r, r.code, r.name)),
     costCenters: (costCenters.data || []).filter((c) => !c.company_id || c.company_id === company).map((r) => opt(r, r.code, r.name)),
     equipment: (equipment.data || []).map((r) => opt(r, r.code, r.name + (r.company_id !== company ? ` (${state.companyName(r.company_id)})` : ''))),
+    // البنود: التصنيفات ← نوع مصروف
+    items: (items.data || []).map((r) => opt(r, r.code, r.name)),
   };
   lk.vatRate = Number(setting('vat.rate', 0.15)) || 0.15;
   lk.vatPeriod = setting('vat.period', 'quarterly');

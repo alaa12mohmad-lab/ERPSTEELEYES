@@ -19,7 +19,7 @@ function fieldInput(f, value, opts, readonly) {
   if (f.type === 'select') {
     input = h('select', { class: 'input', id, disabled: readonly });
     if (!f.required || value === null || value === undefined) input.append(h('option', { value: '' }, f.placeholder || '—'));
-    for (const o of opts) input.append(h('option', { value: o.value, selected: String(o.value) === String(value ?? '') }, o.label));
+    for (const o of opts) input.append(h('option', { value: o.value, selected: String(o.value) === String(value ?? ''), 'data-dep': o.dep ?? '' }, o.label));
   } else if (f.type === 'bool') {
     input = h('input', { type: 'checkbox', id, checked: !!value, disabled: readonly });
     return h('div', { class: 'field' + (f.wide ? ' wide' : '') },
@@ -146,6 +146,17 @@ export function renderMaster(container, cfg) {
       grid.append(fieldInput(f, rec[f.key] ?? (isNew ? f.default : null), optsList[i], ro));
     });
     m.body.replaceChildren(grid);
+    // قائمة تابعة لحقل آخر (مثل «تابع لـ» حسب نوع التصنيف): تظهر الخيارات المطابقة فقط
+    fields.filter((f) => f.dependsOn).forEach((f) => {
+      const sel = grid.querySelector('#f_' + f.key); const dep = grid.querySelector('#f_' + f.dependsOn);
+      if (!sel) return;
+      const apply = () => {
+        const v = dep?.value || rec[f.dependsOn] || '';
+        [...sel.options].forEach((o) => { if (o.value) o.hidden = o.dataset.dep !== v; });
+        if (sel.selectedOptions[0]?.hidden) sel.value = '';
+      };
+      dep?.addEventListener('change', apply); apply();
+    });
     if (!isNew && row.status === 'cancelled') m.body.prepend(h('div', { class: 'notice bad', style: { marginBottom: '14px' } }, 'سجل ملغي: ' + (row.cancel_reason || '')));
     if (!isNew && cfg.formExtras) {
       const extra = h('div', { style: { marginTop: '18px' } });
@@ -354,11 +365,11 @@ function stripMeta(o) {
 // خيارات جاهزة من جداول الأساس
 export const opts = {
   companies: () => async () => state.companies().map((c) => ({ value: c.id, label: c.name, code: c.code })),
-  table: (table, { where, label = (r) => r.name, filter } = {}) => async () => {
+  table: (table, { where, label = (r) => r.name, filter, dep } = {}) => async () => {
     let q = core.from(table).select('*').eq('status', 'active').order('code');
     if (where) q = where(q);
     const { data } = await q;
-    return (data || []).filter(filter || (() => true)).map((r) => ({ value: r.id, label: (r.code ? r.code + ' — ' : '') + label(r), code: r.code }));
+    return (data || []).filter(filter || (() => true)).map((r) => ({ value: r.id, label: (r.code ? r.code + ' — ' : '') + label(r), code: r.code, dep: dep ? dep(r) : undefined }));
   },
   list: (pairs) => async () => pairs.map(([value, label]) => ({ value, label, code: value })),
 };

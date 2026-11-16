@@ -503,7 +503,7 @@ table.grid tr.warnrow td { background: var(--warn-soft); }
 
 /* صفحة القيود: أعمدة قابلة للإخفاء، وعمود القيد يجمع الرقم والتاريخ والنوع */
 .je-grid.hide-party .c-party, .je-grid.hide-inv .c-inv, .je-grid.hide-invdate .c-invdate, .je-grid.hide-due .c-due, .je-grid.hide-tax .c-tax,
-.je-grid.hide-project .c-project, .je-grid.hide-cc .c-cc, .je-grid.hide-eq .c-eq, .je-grid.hide-note .c-note { display: none; }
+.je-grid.hide-project .c-project, .je-grid.hide-cc .c-cc, .je-grid.hide-eq .c-eq, .je-grid.hide-item .c-item, .je-grid.hide-note .c-note { display: none; }
 .je-no { width: 150px; min-width: 150px; }
 .je-no .je-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 2px 0 5px; }
 .je-no .je-head .badge { margin: 0; display: inline-block; }
@@ -854,3 +854,16 @@ button.dash-more { background: none; border: 0; padding: 0; font: inherit; font-
 .dash-pick-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .dash-pick-row .check.sub { color: var(--ink-3); font-size: calc(11.5px * var(--fs, 1)); white-space: nowrap; }
 .dash-chart .rev.neg { fill: color-mix(in srgb, var(--accent) 55%, transparent); }
+
+/* تحليل المشروع والمعدة: دائرة + جدول */
+.an-kpis { display: flex; flex-wrap: wrap; gap: 10px; }
+.an-kpi { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; min-width: 140px; }
+.an-kpi-v { font-size: calc(18px * var(--fs, 1)); font-weight: 700; font-variant-numeric: tabular-nums; direction: ltr; text-align: right; }
+.an-kpi-v.neg { color: var(--bad, #b42318); }
+.an-chart { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+.an-donut { width: 220px; height: 220px; flex: 0 0 220px; }
+.an-donut .an-total { font-size: 17px; font-weight: 700; fill: var(--ink); font-variant-numeric: tabular-nums; }
+.an-donut .an-label { font-size: 11px; fill: var(--ink-2); }
+.an-sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; }
+table.grid.report tr.hl td { background: var(--accent-soft, #fff4e5); }
+@media print { .an-donut { width: 180px; height: 180px; flex-basis: 180px; } }

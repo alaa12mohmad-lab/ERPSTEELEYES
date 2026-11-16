@@ -464,17 +464,7 @@ export function renderProjects(el) {
 }
 
 async function projectDetail(p, from, to) {
-  const m = modal({ title: `المشروع ${p.code} — ${p.name}`, size: 'wide' });
-  const rows = await rpc('project_detail', { p_project: p.project_id, p_companies: companiesArg(), p_from: from || null, p_to: to || null }, 'accounting');
-  const comps = [...new Set(rows.map((r) => r.company_id))];
-  m.body.append(...comps.map((c) => {
-    const rs = rows.filter((r) => r.company_id === c);
-    const rev = rs.filter((r) => r.account_type === 'revenue').reduce((s, r) => s + Number(r.amount), 0);
-    const exp = rs.filter((r) => r.account_type === 'expense').reduce((s, r) => s + Number(r.amount), 0);
-    return h('div', { style: { marginBottom: '18px' } }, h('h3', { style: { fontSize: 'calc(15px * var(--fs, 1))', margin: '0 0 6px' } }, state.companyName(c) || 'شركة', ` — إيراد ${N(rev)} • تكلفة ${N(exp)} • ربح ${N(rev - exp)}`),
-      h('table', { class: 'grid report' }, h('tbody', {}, rs.map((r) => h('tr', { style: { cursor: 'default' } },
-        h('td', { class: 'ltr', style: { width: '90px' } }, r.account_code), h('td', {}, r.account_name), h('td', {}, typeLabel(r.account_type)), h('td', { class: 'num' }, N(r.amount)))))));
-  }), rows.length ? '' : h('div', { class: 'empty' }, 'لا توجد حركات'));
+  return analysisModal({ kind: 'project', id: p.project_id, title: `المشروع ${p.code} — ${p.name}`, from, to });
 }
 
 export function renderEquipment(el) {
@@ -504,15 +494,146 @@ export function renderEquipment(el) {
 }
 
 async function equipmentDetail(q, from, to) {
-  const m = modal({ title: `المعدة ${q.code} — ${q.name}`, size: 'wide' });
-  const rows = await rpc('equipment_detail', { p_equipment: q.equipment_id, p_companies: companiesArg(), p_from: from || null, p_to: to || null }, 'accounting');
-  m.body.append(rows.length ? h('table', { class: 'grid report' },
-    h('thead', {}, h('tr', {}, ['الشركة', 'المشروع', 'الحساب', 'النوع', 'المبلغ'].map((x) => h('th', {}, x)))),
-    h('tbody', {}, rows.map((r) => h('tr', { style: { cursor: 'default' } },
-      h('td', {}, state.companyName(r.company_id), r.company_id !== q.company_id ? h('span', { class: 'badge warn', style: { marginInlineStart: '6px' } }, 'شركة أخرى') : ''),
-      h('td', {}, r.project_name || 'بدون مشروع (على الشركة المالكة)'), h('td', {}, `${r.account_code} — ${r.account_name}`), h('td', {}, typeLabel(r.account_type)),
-      h('td', { class: 'num' }, N(r.amount))))))
-    : h('div', { class: 'empty' }, 'لا توجد حركات'));
+  return analysisModal({ kind: 'equipment', id: q.equipment_id, title: `المعدة ${q.code} — ${q.name}`, from, to, owner: q.company_id });
+}
+
+// ---------------------------------------------------------------------
+// تحليل مشروع أو معدة: دائرة المصروف (بالحساب / بالمجموعة / بالبند) + جدول + كل الأسطر ببيانها
+//   الضغط على شريحة أو صف يعرض أسطرها فقط. تصدير Excel وطباعة
+// ---------------------------------------------------------------------
+const PIE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6'];
+const PIE_OTHER = '#9aa1ab';
+
+function donut(parts, total, onPick) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 220 220'); svg.setAttribute('class', 'an-donut'); svg.setAttribute('role', 'img');
+  const R = 100, r = 62, cx = 110, cy = 110;
+  let a0 = -Math.PI / 2;
+  const pt = (rad, a) => [cx + rad * Math.cos(a), cy + rad * Math.sin(a)];
+  parts.forEach((g) => {
+    const frac = total ? g.amount / total : 0;
+    if (frac <= 0) return;
+    const a1 = a0 + frac * 2 * Math.PI;
+    let el;
+    if (frac >= 0.9999) {
+      el = document.createElementNS(NS, 'path');
+      el.setAttribute('d', `M ${cx} ${cy - R} A ${R} ${R} 0 1 1 ${cx - 0.01} ${cy - R} Z M ${cx} ${cy - r} A ${r} ${r} 0 1 0 ${cx + 0.01} ${cy - r} Z`);
+      el.setAttribute('fill-rule', 'evenodd');
+    } else {
+      const big = a1 - a0 > Math.PI ? 1 : 0;
+      const [x0, y0] = pt(R, a0), [x1, y1] = pt(R, a1), [x2, y2] = pt(r, a1), [x3, y3] = pt(r, a0);
+      el = document.createElementNS(NS, 'path');
+      el.setAttribute('d', `M ${x0} ${y0} A ${R} ${R} 0 ${big} 1 ${x1} ${y1} L ${x2} ${y2} A ${r} ${r} 0 ${big} 0 ${x3} ${y3} Z`);
+    }
+    el.setAttribute('fill', g.color); el.setAttribute('stroke', 'var(--surface)'); el.setAttribute('stroke-width', '2');
+    el.style.cursor = 'pointer';
+    const t = document.createElementNS(NS, 'title'); t.textContent = `${g.name}: ${N(g.amount)} (${(frac * 100).toFixed(1)}%)`; el.append(t);
+    el.addEventListener('click', () => onPick(g));
+    svg.append(el);
+    a0 = a1;
+  });
+  const tx = document.createElementNS(NS, 'text');
+  tx.setAttribute('x', cx); tx.setAttribute('y', cy - 4); tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('class', 'an-total');
+  tx.textContent = N(total);
+  const tl = document.createElementNS(NS, 'text');
+  tl.setAttribute('x', cx); tl.setAttribute('y', cy + 16); tl.setAttribute('text-anchor', 'middle'); tl.setAttribute('class', 'an-label');
+  tl.textContent = 'إجمالي المصروف';
+  svg.append(tx, tl);
+  return svg;
+}
+
+async function analysisModal({ kind, id, title, from, to, owner }) {
+  const m = modal({ title, size: 'wide' });
+  m.body.append(h('div', { class: 'empty' }, 'جارٍ التحميل…'));
+  let rows;
+  try {
+    rows = await rpc('analysis_lines', { p_kind: kind, p_id: id, p_companies: companiesArg(), p_from: from || null, p_to: to || null }, 'accounting');
+  } catch (e) { m.body.replaceChildren(h('div', { class: 'notice bad' }, e.message)); return; }
+  const exp = rows.filter((r) => r.account_type === 'expense');
+  const rev = rows.filter((r) => r.account_type === 'revenue');
+  const sum = (a) => a.reduce((s, r) => s + Number(r.amount), 0);
+  const tExp = sum(exp), tRev = sum(rev);
+  const MODES = [['account', 'بالحساب'], ['group', 'بالمجموعة'], ['item', 'بالبند']];
+  const keyOf = { account: (r) => [r.account_code, `${r.account_code} — ${r.account_name}`], group: (r) => [r.group_code, `${r.group_code} — ${r.group_name}`],
+    item: (r) => [r.item_name || '', r.item_name || 'بدون بند'] };
+  let mode = 'account'; let pick = null;
+  const modeBar = h('div', { class: 'seg' });
+  const chartBox = h('div', { class: 'an-chart' });
+  const linesBox = h('div');
+  const periodTxt = from || to ? `الفترة ${from ? fmt.date(from) : 'البداية'} — ${to ? fmt.date(to) : 'اليوم'}` : 'كل الفترات';
+
+  const groups = () => {
+    const map = new Map();
+    for (const r of exp) {
+      const [k, name] = keyOf[mode](r);
+      const g = map.get(k) || { key: k, name, amount: 0, n: 0 };
+      g.amount += Number(r.amount); g.n += 1; map.set(k, g);
+    }
+    const all = [...map.values()].sort((a, b) => b.amount - a.amount);
+    const top = all.slice(0, 7).map((g, i) => ({ ...g, color: PIE[i], keys: [g.key] }));
+    const rest = all.slice(7);
+    if (rest.length) top.push({ key: '__other', name: `أخرى (${rest.length})`, amount: rest.reduce((s, g) => s + g.amount, 0), n: rest.reduce((s, g) => s + g.n, 0), color: PIE_OTHER, keys: rest.map((g) => g.key) });
+    return { top, all };
+  };
+
+  function drawLines() {
+    const list = pick ? exp.filter((r) => pick.keys.includes(keyOf[mode](r)[0])) : rows;
+    const otherCol = kind === 'project' ? ['المعدة', (r) => r.equipment_name || ''] : ['المشروع', (r) => r.project_name || ''];
+    linesBox.replaceChildren(
+      h('div', { class: 'toolbar', style: { margin: '14px 0 6px' } }, h('strong', {}, pick ? `أسطر: ${pick.name}` : 'كل الأسطر'),
+        h('span', { class: 'help' }, `${list.length} سطر`), pick ? h('button', { class: 'btn sm', onclick: () => { pick = null; draw(); } }, 'عرض الكل') : ''),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
+        h('thead', {}, h('tr', {}, ['التاريخ', 'القيد', 'الشركة', 'الحساب', 'البند', 'بيان السطر', otherCol[0], 'المبلغ'].map((x) => h('th', {}, x)))),
+        h('tbody', {}, list.length ? list.map((r) => h('tr', { onclick: () => openEntry(r.entry_id), class: r.account_type === 'revenue' ? 'group' : '' },
+          h('td', {}, fmt.date(r.entry_date)), h('td', { class: 'ltr' }, r.entry_ref),
+          h('td', {}, state.companyName(r.company_id), owner && r.company_id !== owner ? h('span', { class: 'badge warn', style: { marginInlineStart: '4px' } }, 'شركة أخرى') : ''),
+          h('td', {}, `${r.account_code} — ${r.account_name}`), h('td', {}, r.item_name || ''),
+          h('td', { style: { whiteSpace: 'normal', maxWidth: '340px' } }, r.description || ''), h('td', {}, otherCol[1](r)),
+          h('td', { class: 'num' }, (r.account_type === 'revenue' ? 'إيراد ' : '') + N(r.amount))))
+          : h('tr', {}, h('td', { colspan: 8, class: 'empty' }, 'لا توجد أسطر'))))));
+  }
+
+  function draw() {
+    modeBar.replaceChildren(...MODES.map(([k, t]) => h('button', { class: 'btn sm' + (mode === k ? ' on' : ''), onclick: () => { mode = k; pick = null; draw(); } }, t)));
+    const { top } = groups();
+    const onPick = (g) => { pick = pick?.key === g.key ? null : g; draw(); };
+    chartBox.replaceChildren(
+      tExp > 0 ? donut(top, tExp, onPick) : h('div', { class: 'empty' }, 'لا يوجد مصروف في الفترة'),
+      h('div', { class: 'table-wrap', style: { flex: '1 1 320px' } }, h('table', { class: 'grid report' },
+        h('thead', {}, h('tr', {}, ['', mode === 'item' ? 'البند' : mode === 'group' ? 'المجموعة' : 'الحساب', 'المبلغ', 'النسبة', 'أسطر'].map((x) => h('th', {}, x)))),
+        h('tbody', {}, top.map((g) => h('tr', { onclick: () => onPick(g), class: pick?.key === g.key ? 'hl' : '' },
+          h('td', { style: { width: '18px' } }, h('span', { class: 'an-sw', style: { background: g.color } })), h('td', {}, g.name),
+          h('td', { class: 'num' }, N(g.amount)), h('td', { class: 'num' }, tExp ? (g.amount / tExp * 100).toFixed(1) + '%' : ''), h('td', { class: 'num' }, g.n)))),
+        h('tfoot', {}, h('tr', {}, h('td', {}), h('td', {}, 'الإجمالي'), h('td', { class: 'num' }, N(tExp)), h('td', { class: 'num' }, tExp ? '100%' : ''), h('td', { class: 'num' }, exp.length))))));
+    drawLines();
+  }
+
+  const otherCo = owner ? sum(exp.filter((r) => r.company_id !== owner)) : 0;
+  const kpi = (label, v, cls = '') => h('div', { class: 'an-kpi' }, h('div', { class: 'help' }, label), h('div', { class: 'an-kpi-v ' + cls }, N(v)));
+  const content = h('div', {},
+    h('div', { class: 'an-kpis' }, kpi('الإيراد', tRev), kpi('المصروف', tExp), kpi('الصافي', tRev - tExp, tRev - tExp < 0 ? 'neg' : ''),
+      otherCo ? kpi('صرفت عليها شركات أخرى', otherCo) : '', h('div', { class: 'help', style: { alignSelf: 'end' } }, periodTxt)),
+    h('div', { class: 'toolbar', style: { margin: '12px 0 8px' } }, h('strong', {}, 'توزيع المصروف'), modeBar,
+      h('span', { class: 'help' }, 'اضغط على شريحة أو صف لعرض أسطره')),
+    chartBox, linesBox);
+  m.body.replaceChildren(content);
+  draw();
+
+  const doExport = () => {
+    const { all } = groups();
+    exportAoa(title, [
+      [title], [periodTxt], [],
+      ['الإيراد', tRev], ['المصروف', tExp], ['الصافي', tRev - tExp], [],
+      [MODES.find((x) => x[0] === mode)[1], 'المبلغ', 'النسبة', 'أسطر'],
+      ...all.map((g) => [g.name, g.amount, tExp ? Number((g.amount / tExp * 100).toFixed(1)) : 0, g.n]), [],
+      ['التاريخ', 'القيد', 'الشركة', 'الحساب', 'المجموعة', 'البند', 'بيان السطر', 'المشروع', 'المعدة', 'النوع', 'المبلغ'],
+      ...rows.map((r) => [r.entry_date, r.entry_ref, state.companyName(r.company_id), `${r.account_code} — ${r.account_name}`, `${r.group_code} — ${r.group_name}`,
+        r.item_name || '', r.description || '', r.project_name || '', r.equipment_name || '', r.account_type === 'revenue' ? 'إيراد' : 'مصروف', Number(r.amount)]),
+    ]);
+  };
+  m.foot.append(h('button', { class: 'btn', onclick: doExport }, 'تصدير Excel'),
+    h('button', { class: 'btn', onclick: () => printReport(content, { title, period: periodTxt, orient: 'landscape', company: state.selectedCompanies.length === 1 ? state.selectedCompanies[0] : state.companies().map((c) => c.id) }) }, 'طباعة'));
 }
 
 // ---------------------------------------------------------------------

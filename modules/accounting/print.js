@@ -83,7 +83,7 @@ function voucher(entry, lines, users) {
   const totC = lines.reduce((s, l) => s + Number(l.credit), 0);
   const hasInv = lines.some((l) => l.invoice_no);
   const extra = (l) => [l.project_name && 'مشروع: ' + l.project_name, l.cost_center_name && 'مركز: ' + l.cost_center_name,
-    l.equipment_name && 'معدة: ' + l.equipment_name].filter(Boolean).join(' • ');
+    l.equipment_name && 'معدة: ' + l.equipment_name, l.item_name && 'بند: ' + l.item_name].filter(Boolean).join(' • ');
   return h('section', { class: 'pv' + (cancelled ? ' pv-cancelled' : '') },
     cancelled ? h('div', { class: 'pv-stamp' }, 'ملغي') : '',
     h('header', { class: 'pv-head' },

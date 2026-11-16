@@ -53,7 +53,7 @@ export async function openEntry(id, { onChange } = {}) {
         h('td', { class: 'num' }, Number(l.credit) ? fmt.num(l.credit) : ''), h('td', {}, l.party_name || ''), h('td', {}, invText(l)),
         h('td', {}, l.project_name || ''), h('td', {}, l.cost_center_name || ''),
         h('td', {}, l.equipment_name || '', l.equipment_company_id && l.equipment_company_id !== e.company_id ? h('span', { class: 'badge warn', style: { marginInlineStart: '4px' }, title: 'المعدة ملك شركة أخرى' }, state.companyName(l.equipment_company_id)) : ''),
-        h('td', {}, l.line_description || '')))),
+        h('td', {}, l.item_name ? h('span', { class: 'badge', style: { marginInlineEnd: '4px' } }, l.item_name) : '', l.line_description || '')))),
       h('tfoot', {}, h('tr', {}, h('td', { style: { fontWeight: 700 } }, 'الإجمالي'), h('td', { class: 'num', style: { fontWeight: 700 } }, fmt.num(totD)),
         h('td', { class: 'num', style: { fontWeight: 700 } }, fmt.num(totD)), h('td', { colspan: 6 }))))));
 

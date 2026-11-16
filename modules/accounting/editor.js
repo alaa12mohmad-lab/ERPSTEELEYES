@@ -7,7 +7,7 @@ import { picker, ENTRY_TYPES, TAX_CATEGORIES, today, parseAcc, rememberPartyAcco
 export const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '').trim()); return isFinite(n) ? n : 0; };
 export const round2 = (n) => Math.round(n * 100) / 100;
 export const emptyLine = () => ({ account_id: null, debit: '', credit: '', party_id: null, employee_id: null, project_id: null, cost_center_id: null,
-  equipment_id: null, description: '', invoice_no: '', invoice_date: '', due_date: '', tax_base: '', tax_category: '' });
+  equipment_id: null, item_id: null, description: '', invoice_no: '', invoice_date: '', due_date: '', tax_base: '', tax_category: '' });
 export const emptyEntry = (date) => ({ entry_date: date || today(), description: '', entry_type: 'regular', lines: [emptyLine(), emptyLine()] });
 
 export function entryDiff(e) {
@@ -20,13 +20,13 @@ export function entryDiff(e) {
 export function lineFromSaved(l) {
   return { account_id: l.account_id, debit: Number(l.debit) ? String(l.debit) : '', credit: Number(l.credit) ? String(l.credit) : '',
     party_id: l.party_id, employee_id: l.employee_id, project_id: l.project_id, cost_center_id: l.cost_center_id, equipment_id: l.equipment_id,
-    description: l.line_description || '', invoice_no: l.invoice_no || '', invoice_date: l.invoice_date || '', due_date: l.due_date || '',
+    item_id: l.item_id || null, description: l.line_description || '', invoice_no: l.invoice_no || '', invoice_date: l.invoice_date || '', due_date: l.due_date || '',
     tax_base: l.tax_base ? String(l.tax_base) : '', tax_category: l.tax_category && l.tax_category !== 'standard' ? l.tax_category : '' };
 }
 
 // أعمدة الصفحة. يمكن للمستخدم إخفاء الاختيارية منها، وتظهر تلقائيًا إذا احتوت بيانات أو تطلّبها حساب في الصفحة
 export const OPT_COLS = [['party', 'الطرف'], ['inv', 'رقم الفاتورة'], ['invdate', 'تاريخ الفاتورة'], ['due', 'الاستحقاق'], ['tax', 'الضريبة'],
-  ['project', 'المشروع'], ['cc', 'مركز التكلفة'], ['eq', 'المعدة'], ['note', 'بيان السطر']];
+  ['project', 'المشروع'], ['cc', 'مركز التكلفة'], ['eq', 'المعدة'], ['item', 'البند'], ['note', 'بيان السطر']];
 const COLS = [['no', 'القيد'], ['desc', 'البيان'], ['acc', 'الحساب'], ['dr', 'مدين'], ['cr', 'دائن'], ...OPT_COLS, ['del', '']];
 const COLS_KEY = 'erp-je-hidden-cols';
 export const hiddenCols = () => { const v = store.get(COLS_KEY, []); return Array.isArray(v) ? v : []; };
@@ -100,6 +100,7 @@ export function createEditor(opts) {
       if (l.project_id || a?.project_rule === 'required') forced.add('project');
       if (l.cost_center_id || a?.cost_center_rule === 'required') forced.add('cc');
       if (l.equipment_id || a?.equipment_rule === 'required') forced.add('eq');
+      if (l.item_id) forced.add('item');
       if ((l.description || '').trim()) forced.add('note');
       if (l.due_date) forced.add('due');
     }
@@ -262,6 +263,8 @@ export function createEditor(opts) {
     const projP = picker({ options: lk.projects, listKey: 'proj-' + company, value: l.project_id, placeholder: 'المشروع' }); projP.el.dataset.f = 'project';
     const ccP = picker({ options: lk.costCenters, listKey: 'cc-' + company, value: l.cost_center_id, placeholder: 'المركز' }); ccP.el.dataset.f = 'cc';
     const eqP = picker({ options: lk.equipment, listKey: 'eq-' + company, value: l.equipment_id, placeholder: 'المعدة' }); eqP.el.dataset.f = 'equipment';
+    const itemP = picker({ options: lk.items || [], listKey: 'item', value: l.item_id, placeholder: 'البند' }); itemP.el.dataset.f = 'item';
+    itemP.el.title = 'نوع المصروف من التصنيفات (غيار زيت، كفرات، غسيل…) — للتحليل في المشاريع والمعدات';
     const note = h('input', { class: 'input cell-input', value: l.description || '', 'data-f': 'note' });
 
     // خانة الضريبة: مبلغ خاضع لسطر حساب الضريبة، أو فئة (صفري/معفى) لسطر إيراد أو مصروف
@@ -347,6 +350,7 @@ export function createEditor(opts) {
     projP.el.addEventListener('change', after(() => { l.project_id = projP.id; }));
     ccP.el.addEventListener('change', after(() => { l.cost_center_id = ccP.id; }));
     eqP.el.addEventListener('change', after(() => { l.equipment_id = eqP.id; }));
+    itemP.el.addEventListener('change', after(() => { l.item_id = itemP.id; }));
     note.addEventListener('input', () => { l.description = note.value; changed(); });
 
     // اقتراح المبلغ المتبقي للتوازن، والمبلغ الخاضع، عند الدخول إلى خانة فارغة
@@ -373,7 +377,7 @@ export function createEditor(opts) {
 
     return [h('td', { class: 'acc-cell c-acc' }, accP.el), h('td', { class: 'c-dr' }, dr), h('td', { class: 'c-cr' }, cr), h('td', { class: 'c-party' }, partyP.el),
       h('td', { class: 'inv-cell c-inv' }, invNo, invSt), h('td', { class: 'c-invdate' }, invDate), h('td', { class: 'c-due' }, dueDate), h('td', { class: 'c-tax' }, base, cat),
-      h('td', { class: 'c-project' }, projP.el), h('td', { class: 'c-cc' }, ccP.el), h('td', { class: 'c-eq' }, eqP.el), h('td', { class: 'c-note' }, note), h('td', { class: 'c-del' }, delBtn)];
+      h('td', { class: 'c-project' }, projP.el), h('td', { class: 'c-cc' }, ccP.el), h('td', { class: 'c-eq' }, eqP.el), h('td', { class: 'c-item' }, itemP.el), h('td', { class: 'c-note' }, note), h('td', { class: 'c-del' }, delBtn)];
   }
 
   function onKey(ev) {
@@ -417,7 +421,7 @@ export function createEditor(opts) {
       lines: e.lines.map((l) => ({
         account_id: l.account_id, debit: num(l.debit) || 0, credit: num(l.credit) || 0,
         party_id: l.party_id, employee_id: l.employee_id, project_id: l.project_id, cost_center_id: l.cost_center_id,
-        equipment_id: l.equipment_id, description: (l.description || '').trim() || null,
+        equipment_id: l.equipment_id, item_id: l.item_id || null, description: (l.description || '').trim() || null,
         invoice_no: (l.invoice_no || '').trim() || null, invoice_date: l.invoice_date || null, due_date: l.due_date || null,
         tax_base: isVat(l) && num(l.tax_base) ? num(l.tax_base) : null,
         tax_category: !isVat(l) && l.tax_category ? l.tax_category : null,

@@ -10,7 +10,7 @@ import { printEntries } from './print.js';
 // الصفحة المحفوظة: تختفي الأعمدة الفارغة في كل الأسطر
 function emptyCols(lines) {
   const has = { party: (l) => l.party_name, inv: (l) => l.invoice_no, invdate: (l) => l.invoice_date, due: (l) => l.due_date, tax: (l) => l.tax_base || (l.tax_category && l.tax_category !== 'standard'),
-    project: (l) => l.project_name, cc: (l) => l.cost_center_name, eq: (l) => l.equipment_name, note: (l) => l.line_description };
+    project: (l) => l.project_name, cc: (l) => l.cost_center_name, eq: (l) => l.equipment_name, item: (l) => l.item_name, note: (l) => l.line_description };
   return Object.entries(has).filter(([, f]) => !lines.some(f)).map(([k]) => 'hide-' + k).join(' ');
 }
 
@@ -162,7 +162,7 @@ export function renderJournal(el, { focusEntry } = {}) {
           h('td', { class: 'num' }, Number(l.credit) ? fmt.num(l.credit) : ''), h('td', { class: 'c-party' }, l.party_name || ''),
           h('td', { class: 'ltr c-inv' }, l.invoice_no || ''), h('td', { class: 'c-invdate' }, fmt.date(l.invoice_date)), h('td', { class: 'c-due' }, fmt.date(l.due_date)),
           h('td', { class: 'c-tax' + (l.tax_base ? ' num' : '') }, l.tax_base ? fmt.num(l.tax_base) : l.tax_category && l.tax_category !== 'standard' ? TAX_CATEGORIES[l.tax_category] : ''),
-          h('td', { class: 'c-project' }, l.project_name || ''), h('td', { class: 'c-cc' }, l.cost_center_name || ''), h('td', { class: 'c-eq' }, l.equipment_name || ''), h('td', { class: 'c-note' }, l.line_description || ''));
+          h('td', { class: 'c-project' }, l.project_name || ''), h('td', { class: 'c-cc' }, l.cost_center_name || ''), h('td', { class: 'c-eq' }, l.equipment_name || ''), h('td', { class: 'c-item' }, l.item_name || ''), h('td', { class: 'c-note' }, l.line_description || ''));
         tbody.append(tr);
       });
     });
@@ -174,7 +174,7 @@ export function renderJournal(el, { focusEntry } = {}) {
         h('span', { class: 'grow' }), printBtn),
       h('div', { class: 'card' }, h('div', { class: 'table-wrap je-wrap' }, h('table', { class: 'grid je-grid view ' + emptyCols(lines || []) },
         h('thead', {}, h('tr', {}, [['', 'القيد'], ['', 'التاريخ'], ['', 'البيان'], ['', 'الحساب'], ['', 'مدين'], ['', 'دائن'], ['party', 'الطرف'], ['inv', 'رقم الفاتورة'],
-          ['invdate', 'تاريخ الفاتورة'], ['due', 'الاستحقاق'], ['tax', 'الضريبة'], ['project', 'المشروع'], ['cc', 'مركز التكلفة'], ['eq', 'المعدة'], ['note', 'بيان السطر']].map(([k, t]) => h('th', { class: k ? 'c-' + k : '' }, t)))),
+          ['invdate', 'تاريخ الفاتورة'], ['due', 'الاستحقاق'], ['tax', 'الضريبة'], ['project', 'المشروع'], ['cc', 'مركز التكلفة'], ['eq', 'المعدة'], ['item', 'البند'], ['note', 'بيان السطر']].map(([k, t]) => h('th', { class: k ? 'c-' + k : '' }, t)))),
         tbody,
         h('tfoot', {}, h('tr', {}, h('td', { colspan: 4, style: { fontWeight: 700 } }, 'الإجمالي' + (nCancelled ? ' (بدون الملغي)' : '')),
           h('td', { class: 'num', style: { fontWeight: 700 } }, fmt.num(totD)), h('td', { class: 'num', style: { fontWeight: 700 } }, fmt.num(totC)), h('td', { colspan: 9 })))))));
