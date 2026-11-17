@@ -1,5 +1,5 @@
 // قوائم الاختيار للمحاسبة (الحسابات، الأطراف، الموظفون، المشاريع، المراكز، المعدات) + مكوّن الاختيار
-import { core, acc, rpcListeners } from '../../shared/sb.js';
+import { core, acc, rpcListeners, selectAll } from '../../shared/sb.js';
 import { h, store } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { combo } from '../../shared/combo.js';
@@ -17,7 +17,7 @@ export async function loadLookups(company, { force = false } = {}) {
   if (!force && cache.has(key)) return cache.get(key);
   const [accounts, parties, employees, projects, costCenters, equipment, settings, items] = await Promise.all([
     acc.from('accounts').select('*').eq('company_id', company).eq('status', 'active').order('code'),
-    core.from('parties').select('id, code, name, is_customer, is_supplier, tax_number').eq('status', 'active').order('code'),
+    selectAll(() => core.from('parties').select('id, code, name, is_customer, is_supplier, tax_number').eq('status', 'active').order('code').order('id')),
     core.from('employees').select('id, employee_no, full_name, company_id, end_date').eq('company_id', company).eq('status', 'active').order('employee_no'),
     core.from('v_projects').select('id, code, name, companies, phase').eq('status', 'active').order('code'),
     core.from('cost_centers').select('id, code, name, company_id').eq('status', 'active').order('code'),

@@ -1,5 +1,5 @@
 // مطابقة البنك: رفع كشف الحساب (Excel/CSV)، والمطابقة التلقائية واليدوية مع قيود حساب البنك، وتسجيل البنود الموجودة في البنك وغير المسجّلة في الدفاتر
-import { acc, rpc } from '../../shared/sb.js';
+import { acc, rpc, selectAll } from '../../shared/sb.js';
 import { readWorkbook } from '../../shared/xlsx-safe.js';
 import { h, fmt, modal, toast, askReason } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
@@ -69,8 +69,8 @@ export function renderBank(el) {
     sStmt = null; sBook = null;
     const [sum, stmt, book] = await Promise.all([
       rpc('bank_recon_summary', { p_account: account, p_as_of: asOf.value }, 'accounting'),
-      acc.from('bank_statement_lines').select('*').eq('account_id', account).eq('status', 'active').lte('txn_date', asOf.value).order('txn_date').limit(5000),
-      acc.from('v_bank_book_lines').select('*').eq('account_id', account).lte('entry_date', asOf.value).order('entry_date').limit(10000),
+      selectAll(() => acc.from('bank_statement_lines').select('*').eq('account_id', account).eq('status', 'active').lte('txn_date', asOf.value).order('txn_date').order('id')),
+      selectAll(() => acc.from('v_bank_book_lines').select('*').eq('account_id', account).lte('entry_date', asOf.value).order('entry_date').order('line_id')),
     ]);
     const S = sum[0]; const stl = stmt.data || []; const bl = book.data || [];
     if (!stl.length) {

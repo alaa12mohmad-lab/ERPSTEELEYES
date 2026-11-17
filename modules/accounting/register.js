@@ -1,6 +1,6 @@
 // سجل القيود + نافذة القيد (طباعة، تعديل، إلغاء، عكس، حذف، سجل التعديلات)
 import { salesEditor } from './sales.js';
-import { acc, core, rpc, errMsg } from '../../shared/sb.js';
+import { acc, core, rpc, errMsg, selectAll } from '../../shared/sb.js';
 import { h, modal, toast, fmt, askReason } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { ENTRY_TYPES, SOURCES, TAX_CATEGORIES, yearStart, today, loadLookups } from './lookups.js';
@@ -178,12 +178,15 @@ export function renderRegister(el) {
 
   async function load() {
     tbody.replaceChildren(h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'جارٍ التحميل…')));
-    let q = acc.from('v_entries').select('*').gte('entry_date', from.value).lte('entry_date', to.value)
-      .in('company_id', state.selectedCompanies).order('entry_date', { ascending: false }).order('entry_no', { ascending: false }).limit(2000);
-    if (type.value) q = q.eq('entry_type', type.value);
-    if (status.value === 'edited') q = q.gt('version', 1).eq('status', 'active');
-    else if (status.value) q = q.eq('status', status.value);
-    const { data, error } = await q;
+    const make = () => {
+      let q = acc.from('v_entries').select('*').gte('entry_date', from.value).lte('entry_date', to.value)
+        .in('company_id', state.selectedCompanies).order('entry_date', { ascending: false }).order('entry_no', { ascending: false }).order('id');
+      if (type.value) q = q.eq('entry_type', type.value);
+      if (status.value === 'edited') q = q.gt('version', 1).eq('status', 'active');
+      else if (status.value) q = q.eq('status', status.value);
+      return q;
+    };
+    const { data, error } = await selectAll(make);
     if (error) { tbody.replaceChildren(h('tr', {}, h('td', { colspan: 10, class: 'empty' }, errMsg(error)))); return; }
     rows = data; draw();
   }

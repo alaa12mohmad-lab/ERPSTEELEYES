@@ -67,9 +67,41 @@ export async function insertRows(table, rows, schema) {
 
 // يمكن لأي قسم الاستماع لنداءات rpc الناجحة (مثلًا: تحديث الأرصدة المعروضة بعد حفظ قيد)
 export const rpcListeners = new Set();
+// الخادم يرجّع 1000 صف كحد أقصى في الطلب الواحد (max-rows) — فالتقارير والقوائم الطويلة تُجلب صفحة صفحة
+export const PAGE = 1000;
+const MAX_ROWS = 200000;
+
+// دوال قراءة فقط تُرجع قوائم — آمن طلبها أكثر من مرة لجلب باقي الصفحات
+const READ_SETS = new Set([
+  'account_statement', 'party_statement', 'analysis_lines', 'cost_center_detail', 'cost_center_summary',
+  'trial_balance', 'party_balances', 'open_invoices', 'vat_accounts_movement', 'intercompany_mixed_entries',
+  'intercompany_reconciliation', 'equipment_summary', 'project_summary', 'check_invoices', 'pr_open_invoices',
+  'integrity_check', 'income_statement', 'balance_sheet', 'cash_flow_direct',
+]);
+
+// يجلب كل صفوف استعلام select على صفحات. make() يُرجع استعلامًا جديدًا في كل مرة (بترتيب ثابت).
+export async function selectAll(make) {
+  let all = [];
+  for (let from = 0; from < MAX_ROWS; from += PAGE) {
+    const { data, error } = await make().range(from, from + PAGE - 1);
+    if (error) return { data: from ? all : null, error };
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) break;
+  }
+  return { data: all, error: null };
+}
+
 export async function rpc(fn, args = {}, schema) {
-  const { data, error } = await db(schema).rpc(fn, args);
+  let { data, error } = await db(schema).rpc(fn, args);
   if (error) throw new Error(errMsg(error));
+  if (READ_SETS.has(fn) && Array.isArray(data) && data.length === PAGE) {
+    for (let from = PAGE; from < MAX_ROWS; from += PAGE) {
+      const r = await db(schema).rpc(fn, args).range(from, from + PAGE - 1);
+      if (r.error) throw new Error(errMsg(r.error));
+      data = data.concat(r.data || []);
+      if (!r.data || r.data.length < PAGE) break;
+    }
+  }
   rpcListeners.forEach((f) => { try { f(fn, schema); } catch { /* ignore */ } });
   return data;
 }

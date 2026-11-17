@@ -1,5 +1,5 @@
 // صفحات القيود: إدخال شبه Excel (صفحة فيها قيود كثيرة)، والتنقل بين الصفحات المحفوظة
-import { acc, core, rpc } from '../../shared/sb.js';
+import { acc, core, rpc, selectAll } from '../../shared/sb.js';
 import { h, toast, fmt, store, confirmDialog } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { loadLookups, companySelect, ENTRY_TYPES, TAX_CATEGORIES } from './lookups.js';
@@ -134,8 +134,8 @@ export function renderJournal(el, { focusEntry } = {}) {
     const b = batches[i];
     body.replaceChildren(h('div', { class: 'empty' }, 'جارٍ التحميل…'));
     const [{ data: lines }, { data: ents }, { data: users }] = await Promise.all([
-      acc.from('v_lines').select('*').eq('batch_id', b.id).order('entry_no').order('line_no'),
-      acc.from('v_entries').select('*').eq('batch_id', b.id).order('entry_no'),
+      selectAll(() => acc.from('v_lines').select('*').eq('batch_id', b.id).order('entry_no').order('line_no').order('id')),
+      selectAll(() => acc.from('v_entries').select('*').eq('batch_id', b.id).order('entry_no').order('id')),
       core.from('v_user_names').select('id, full_name'),
     ]);
     const ent = Object.fromEntries((ents || []).map((x) => [x.id, x]));
