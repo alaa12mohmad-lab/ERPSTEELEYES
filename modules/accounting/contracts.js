@@ -1,7 +1,7 @@
 // عقود المشاريع والمستخلصات: عقود العملاء ومقاولي الباطن، الدفعة المقدمة واستردادها، المحتجزات وفكها.
 //   مستخلصات مقاولي الباطن تُنشئ قيدها مباشرة (accounting.post_contract_bill)، وإلغاء القيد من سجل القيود = إلغاء المستخلص
 import { acc, rpc } from '../../shared/sb.js';
-import { h, fmt, modal, toast, confirmDialog } from '../../shared/ui.js';
+import { h, fmt, modal, toast, confirmDialog, askReason } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
 import { loadLookups, picker, today } from './lookups.js';
 import { N } from './reports.js';
@@ -96,6 +96,7 @@ async function contractView(id, done) {
         Number(c.advance_amount) > 0 ? h('button', { class: 'btn', disabled: advLeft <= 0, onclick: () => bill('advance') }, 'دفعة مقدمة') : null,
         Number(s.retention_held) > 0 ? h('button', { class: 'btn', onclick: () => bill('release') }, 'فك محتجز') : null,
         state.can('accounting', 3) ? h('button', { class: 'btn ghost', onclick: () => amendDialog(c, draw) }, c.kind === 'po' ? 'تعديل أمر الشراء' : 'أمر تغيير') : null,
+        h('button', { class: 'btn ghost', title: 'فاتورة متسجلة قبل كده في قيد (مستورد أو يدوي) — تتربط بالعقد من غير قيد جديد', onclick: () => linkDialog(c, draw) }, 'ربط فاتورة سابقة'),
         h('div', { class: 'grow' }),
         state.can('accounting', 3) ? h('button', { class: 'btn ghost', onclick: () => contractForm(c, () => { draw(); done(); }) }, 'تعديل العقد') : null) : null,
       h('div', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
@@ -103,11 +104,16 @@ async function contractView(id, done) {
         h('tbody', {}, bills.length ? bills.map((b) => h('tr', { class: b.entry_status !== 'active' ? 'cancelled' : '' },
           h('td', {}, BILL[b.kind], b.entry_status !== 'active' ? h('span', { class: 'badge bad', style: { marginInlineStart: '6px' } }, 'ملغي') : null,
             b.entry_version > 1 ? h('span', { class: 'badge warn', title: 'عُدّل القيد بعد إصداره — قد تختلف أرقام المستخلص هنا عنه', style: { marginInlineStart: '6px' } }, 'القيد معدّل') : null),
-          h('td', { class: 'num' }, b.bill_no), h('td', {}, fmt.date(b.bill_date)), h('td', { class: 'ltr' }, b.invoice_no),
+          h('td', { class: 'num' }, b.linked ? h('span', { class: 'badge', title: 'فاتورة سابقة مربوطة من قيد موجود' }, 'سابقة') : b.bill_no), h('td', {}, fmt.date(b.bill_date)), h('td', { class: 'ltr' }, b.invoice_no),
           h('td', { class: 'num' }, N(b.work_amount)), h('td', { class: 'num' }, Number(b.recovery) ? N(b.recovery) : ''), h('td', { class: 'num' }, Number(b.retention) ? N(b.retention) : ''),
           h('td', { class: 'num' }, Number(b.vat_base) ? N(b.vat_base) : ''), h('td', { class: 'num' }, Number(b.vat_amount) ? N(b.vat_amount) : ''),
           h('td', { class: 'num' }, h('b', {}, N(b.net_amount))),
-          h('td', {}, h('a', { href: 'javascript:void 0', onclick: () => openEntry(b.entry_id, { onChange: draw }) }, b.entry_ref))))
+          h('td', {}, h('a', { href: 'javascript:void 0', onclick: () => openEntry(b.entry_id, { onChange: draw }) }, b.entry_ref),
+            b.linked && lvl2 ? h('button', { class: 'btn ghost', style: { marginInlineStart: '6px', padding: '2px 8px' }, onclick: async () => {
+              const reason = await askReason('فك ربط الفاتورة ' + b.invoice_no, { ok: 'فك الربط', note: 'القيد نفسه مش هيتأثر — الفاتورة بس هتخرج من حسابات العقد' });
+              if (!reason) return;
+              try { await rpc('unlink_contract_invoice', { p_id: b.id, p_reason: reason }, 'accounting'); toast('اتفك الربط', 'ok'); draw(); } catch (e) { toast(e.message, 'bad'); }
+            } }, 'فك الربط') : null)))
           : h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'لا توجد مستخلصات بعد')))))),
       pend?.length ? h('div', { class: 'section-title' }, 'فواتير لم تُعتمد بعد (لا تُنقص العقد حتى اعتمادها)') : null,
       pend?.length ? h('div', { class: 'card' }, h('table', { class: 'grid report' },
@@ -192,6 +198,76 @@ async function billDialog(c, kind, s, done) {
   m.foot.append(go, h('button', { class: 'btn', onclick: m.close }, 'رجوع'));
   preview();
   setTimeout(() => amt.focus(), 0);
+}
+
+// ---------------------------------------------------------------------
+// ربط فاتورة سابقة (قيد موجود) بالعقد — بدون قيد جديد
+// ---------------------------------------------------------------------
+async function linkDialog(c, done) {
+  const m = modal({ title: `ربط فاتورة سابقة — ${KIND[c.kind]} ${c.contract_no}`, size: 'wide' });
+  const q = h('input', { class: 'input', placeholder: 'ابحث برقم الفاتورة أو البيان أو رقم القيد (اتركه فاضي لعرض الكل)' });
+  const list = h('div');
+  const form = h('div');
+  m.body.append(h('p', { class: 'help', style: { marginTop: 0 } },
+    'دي القيود اللي فيها مبلغ على ', h('b', {}, 'حساب الطرف للعميل/المقاول ده'), ' ومش مربوطة بعقد. اختار الفاتورة وراجع المبالغ — القيد نفسه مش هيتعدل، فالربط يشتغل حتى لو الفترة مقفلة.'),
+    h('div', { class: 'toolbar' }, q), list, form);
+  let t;
+  const search = () => { clearTimeout(t); t = setTimeout(async () => {
+    list.replaceChildren(h('div', { class: 'help' }, 'جاري البحث…'));
+    try {
+      const rows = await rpc('contract_link_candidates', { p_contract: c.id, p_q: q.value || null }, 'accounting');
+      list.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'table-wrap', style: { maxHeight: '260px' } }, h('table', { class: 'grid report' },
+        h('thead', {}, h('tr', {}, ['التاريخ', 'القيد', 'الفاتورة', 'البيان', 'على الطرف في القيد', 'المتاح للربط'].map((x) => h('th', {}, x)))),
+        h('tbody', {}, rows.length ? rows.map((r) => h('tr', { style: { cursor: 'pointer' }, onclick: (ev) => {
+          ev.currentTarget.parentNode.querySelectorAll('tr').forEach((t) => t.classList.remove('sel')); ev.currentTarget.classList.add('sel'); pick(r); } },
+          h('td', {}, fmt.date(r.entry_date)), h('td', {}, r.entry_ref), h('td', { class: 'ltr' }, r.invoice_no || ''), h('td', { class: 'help' }, (r.description || '').slice(0, 90)),
+          h('td', { class: 'num' }, N(r.party_net)), h('td', { class: 'num' }, h('b', {}, N(r.available)))))
+          : h('tr', {}, h('td', { colspan: 6, class: 'empty' }, 'مفيش قيود مرشحة')))))));
+    } catch (e) { list.replaceChildren(h('div', { class: 'notice bad' }, e.message)); }
+  }, 300); };
+  q.addEventListener('input', search);
+
+  const pick = (r) => {
+    const num = (v) => h('input', { class: 'input', type: 'number', step: '0.01', value: Number(v) || 0 });
+    const inv = h('input', { class: 'input ltr', value: r.invoice_no || '' });
+    const work = num(r.s_work), rec = num(r.s_recovery), ret = num(r.s_retention), vat = num(r.s_vat);
+    const notes = h('input', { class: 'input', placeholder: 'اختياري' });
+    const out = h('div', { class: 'kpis', style: { marginTop: '10px' } });
+    const go = h('button', { class: 'btn primary' }, 'ربط الفاتورة');
+    const calc = () => {
+      const net = Math.round(((Number(work.value) || 0) - (Number(rec.value) || 0) - (Number(ret.value) || 0) + (Number(vat.value) || 0)) * 100) / 100;
+      const ok = net > 0 && net <= Number(r.available) + 0.01 && inv.value.trim() && Number(work.value) > 0;
+      out.replaceChildren(
+        h('div', { class: 'kpi main' }, h('small', {}, 'صافي الفاتورة'), h('b', {}, fmt.num(net))),
+        h('div', { class: 'kpi' }, h('small', {}, 'المتاح في القيد'), h('b', {}, fmt.num(r.available)),
+          net > Number(r.available) + 0.01 ? h('span', { class: 'bad' }, 'الصافي أكبر من المتاح') : null));
+      go.disabled = !ok;
+    };
+    [work, rec, ret, vat, inv].forEach((x) => x.addEventListener('input', calc));
+    go.onclick = async () => {
+      go.disabled = true;
+      try {
+        await rpc('link_contract_invoice', { p_contract: c.id, p_entry: r.entry_id, p_invoice_no: inv.value, p_work: Number(work.value) || 0,
+          p_vat: Number(vat.value) || 0, p_retention: Number(ret.value) || 0, p_recovery: Number(rec.value) || 0, p_notes: notes.value || null, p_kind: 'progress' }, 'accounting');
+        toast(`اتربطت الفاتورة ${inv.value} — القيد ${r.entry_ref}`, 'ok'); m.close(); done();
+      } catch (e) { toast(e.message, 'bad'); go.disabled = false; }
+    };
+    form.replaceChildren(...[h('div', { class: 'section-title' }, `الفاتورة من القيد ${r.entry_ref} — ${fmt.date(r.entry_date)}`),
+      r.estimated ? h('div', { class: 'notice warn' }, 'القيد مفيهوش سطر ضريبة واضح للفاتورة دي — الضريبة والأعمال محسوبين تقديريًا. راجعهم من الفاتورة.') : null,
+      h('div', { class: 'form-grid' },
+        h('div', { class: 'field' }, h('label', {}, 'رقم الفاتورة', h('span', { class: 'req' }, '*')), inv),
+        h('div', { class: 'field' }, h('label', {}, 'قيمة الأعمال (قبل الضريبة)', h('span', { class: 'req' }, '*')), work),
+        h('div', { class: 'field' }, h('label', {}, 'استرداد الدفعة المقدمة'), rec),
+        h('div', { class: 'field' }, h('label', {}, 'المحتجز'), ret),
+        h('div', { class: 'field' }, h('label', {}, 'الضريبة'), vat),
+        h('div', { class: 'field' }, h('label', {}, 'ملاحظات'), notes)), out].filter(Boolean));
+    m.foot.replaceChildren(go, h('button', { class: 'btn', onclick: m.close }, 'رجوع'));
+    calc();
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  m.foot.append(h('button', { class: 'btn', onclick: m.close }, 'رجوع'));
+  search();
+  setTimeout(() => q.focus(), 0);
 }
 
 // ---------------------------------------------------------------------

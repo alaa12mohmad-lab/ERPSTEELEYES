@@ -17,7 +17,7 @@ export const BACKUP_TABLES = [
   ['accounting', 'accounts'], ['accounting', 'batches'], ['accounting', 'journal_entries'], ['accounting', 'journal_lines'],
   ['accounting', 'entry_versions'], ['accounting', 'proposed_entries'], ['accounting', 'deleted_entries'], ['accounting', 'period_locks'],
   ['accounting', 'bank_statements'], ['accounting', 'bank_statement_lines'], ['accounting', 'cash_commitments'],
-  ['accounting', 'contracts'], ['accounting', 'contract_amendments'], ['accounting', 'contract_bills'], ['accounting', 'sales_invoices'],
+  ['accounting', 'contracts'], ['accounting', 'contract_amendments'], ['accounting', 'contract_bills'], ['accounting', 'contract_links'], ['accounting', 'sales_invoices'],
   ['accounting', 'quotations'], ['core', 'company_letterheads'],
   ['core', 'project_managers'], ['core', 'user_dashboard_cards'], ['accounting', 'payment_requests'], ['accounting', 'payment_request_events'],
   ['accounting', 'custodies'], ['accounting', 'custody_moves'], ['accounting', 'custody_expenses'],

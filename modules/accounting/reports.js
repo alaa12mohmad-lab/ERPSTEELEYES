@@ -3,6 +3,7 @@ import { printHeader, printFooter, refreshCompanies } from '../../shared/brandin
 import { acc, core, rpc, errMsg } from '../../shared/sb.js';
 import { h, modal, toast, fmt } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
+import { monthBars, hbars, legend, PALETTE as CH } from '../../shared/charts.js';
 import { loadLookups, picker, companySelect, yearStart, today, typeLabel, parseAcc } from './lookups.js';
 import { openEntry } from './register.js';
 
@@ -443,21 +444,35 @@ export function renderProjects(el) {
   const to = h('input', { class: 'input', type: 'date', style: { width: 'auto' } });
   const onlyActive = h('input', { type: 'checkbox', checked: true });
   const go = frame(el, [h('span', { class: 'help' }, 'الشركات حسب اختيارك أعلى الشاشة'), h('span', {}, 'من'), from, h('span', {}, 'إلى'), to, h('label', { class: 'check' }, onlyActive, 'مشاريع لها حركة فقط')], async (out) => {
-    let rows = await rpc('project_summary', { p_companies: companiesArg(), p_from: from.value || null, p_to: to.value || null }, 'accounting');
+    const [rows0, cs] = await Promise.all([rpc('project_summary', { p_companies: companiesArg(), p_from: from.value || null, p_to: to.value || null }, 'accounting'),
+      rpc('contract_status', { p_companies: companiesArg() }, 'accounting').catch(() => [])]);
+    let rows = rows0;
     if (onlyActive.checked) rows = rows.filter((r) => Number(r.revenue) || Number(r.direct_cost) || Number(r.other_cost));
+    // عقود العملاء وأوامر الشراء على كل مشروع: القيمة الحالية والمفوتر حتى اليوم
+    const po = {};
+    for (const c of cs) if (c.kind !== 'subcontract' && c.status === 'active') {
+      const x = po[c.project_id] || (po[c.project_id] = { value: 0, work: 0, n: 0 }); x.value += Number(c.current_value); x.work += Number(c.work_done); x.n += 1;
+    }
+    const ranked = [...rows].sort((a, b) => Number(b.profit) - Number(a.profit));
     const t = rows.reduce((s, r) => { s.r += Number(r.revenue); s.d += Number(r.direct_cost); s.o += Number(r.other_cost); s.p += Number(r.profit); return s; }, { r: 0, d: 0, o: 0, p: 0 });
     const scope = state.allCompaniesSelected() ? 'كل الشركات' : state.selectedCompanies.map((id) => state.companyName(id)).join(' + ');
-    out.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('strong', {}, 'ربحية المشاريع'), h('span', { class: 'help' }, scope + ' — مجمل الربح قبل المصروفات الإدارية العامة')),
+    const poCell = (r) => { const x = po[r.project_id]; if (!x) return ''; const pc = x.value ? (x.work / x.value) * 100 : 0;
+      return h('span', { title: `${x.n} عقد/أمر شراء — القيمة الحالية ${N(x.value)} — المفوتر ${N(x.work)}` }, N(x.value), h('div', { class: 'help', style: { direction: 'rtl', textAlign: 'start' } }, `مفوتر ${pc.toFixed(0)}% — ${N(x.work)}`)); };
+    out.replaceChildren(
+      ranked.length > 1 ? h('div', { class: 'card an-rank' }, h('div', { class: 'toolbar' }, h('strong', {}, 'ترتيب المشاريع بالربح'), h('span', { class: 'help' }, 'الإيراد − التكاليف في الفترة — اضغط على المشروع في الجدول للتحليل')),
+        hbars(ranked.map((r) => ({ label: `${r.code} — ${r.name}`, value: Number(r.profit), sub: `إيراد ${N(r.revenue)} — تكلفة ${N(Number(r.direct_cost) + Number(r.other_cost))}` })), { max: 12 })) : '',
+      h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('strong', {}, 'ربحية المشاريع'), h('span', { class: 'help' }, scope + ' — مجمل الربح قبل المصروفات الإدارية العامة')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
-        h('thead', {}, h('tr', {}, ['الكود', 'المشروع', 'الشركة الرئيسية', 'قيمة العقد', 'الإيراد', 'التكلفة المباشرة', 'تكاليف أخرى', 'الربح', 'الهامش', 'شركات لها قيود'].map((x) => h('th', {}, x)))),
+        h('thead', {}, h('tr', {}, ['الكود', 'المشروع', 'الشركة الرئيسية', 'قيمة العقد', 'العقود / أوامر الشراء', 'الإيراد', 'التكلفة المباشرة', 'تكاليف أخرى', 'الربح', 'الهامش', 'شركات لها قيود'].map((x) => h('th', {}, x)))),
         h('tbody', {}, rows.length ? rows.map((r) => h('tr', { onclick: () => projectDetail(r, from.value, to.value) },
-          h('td', { class: 'ltr' }, r.code), h('td', {}, r.name), h('td', {}, state.companyName(r.lead_company_id)), h('td', { class: 'num' }, N(r.contract_value)),
+          h('td', { class: 'ltr' }, r.code), h('td', {}, r.name), h('td', {}, state.companyName(r.lead_company_id)), h('td', { class: 'num' }, N(r.contract_value)), h('td', { class: 'num' }, poCell(r)),
           h('td', { class: 'num' }, N(r.revenue)), h('td', { class: 'num' }, N(r.direct_cost)), h('td', { class: 'num' }, N(r.other_cost)),
           h('td', { class: neg(r.profit) }, N(r.profit)), h('td', { class: 'num' }, Number(r.revenue) ? (Number(r.profit) / Number(r.revenue) * 100).toFixed(1) + '%' : ''),
-          h('td', {}, r.companies_with_entries))) : h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'لا توجد حركات على المشاريع'))),
-        h('tfoot', {}, h('tr', {}, h('td', { colspan: 4 }, 'الإجمالي'), h('td', { class: 'num' }, N(t.r)), h('td', { class: 'num' }, N(t.d)), h('td', { class: 'num' }, N(t.o)),
+          h('td', {}, r.companies_with_entries))) : h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'لا توجد حركات على المشاريع'))),
+        h('tfoot', {}, h('tr', {}, h('td', { colspan: 5 }, 'الإجمالي'), h('td', { class: 'num' }, N(t.r)), h('td', { class: 'num' }, N(t.d)), h('td', { class: 'num' }, N(t.o)),
           h('td', { class: neg(t.p) }, N(t.p)), h('td', { colspan: 2 })))))));
-    return { name: 'ربحية المشاريع', aoa: [['الكود', 'المشروع', 'الإيراد', 'التكلفة المباشرة', 'تكاليف أخرى', 'الربح'], ...rows.map((r) => [r.code, r.name, Number(r.revenue), Number(r.direct_cost), Number(r.other_cost), Number(r.profit)])] };
+    return { name: 'ربحية المشاريع', aoa: [['الكود', 'المشروع', 'قيمة العقود / أوامر الشراء', 'المفوتر عليها', 'الإيراد', 'التكلفة المباشرة', 'تكاليف أخرى', 'الربح'],
+      ...rows.map((r) => [r.code, r.name, po[r.project_id]?.value || 0, po[r.project_id]?.work || 0, Number(r.revenue), Number(r.direct_cost), Number(r.other_cost), Number(r.profit)])] };
   });
   const off = state.onCompaniesChange(() => { if (document.body.contains(el)) go(); else off(); });
   go();
@@ -475,17 +490,23 @@ export function renderEquipment(el) {
     let rows = await rpc('equipment_summary', { p_companies: companiesArg(), p_from: from.value || null, p_to: to.value || null }, 'accounting');
     if (onlyActive.checked) rows = rows.filter((r) => Number(r.revenue) || Number(r.expense));
     const t = rows.reduce((s, r) => { s.r += Number(r.revenue); s.e += Number(r.expense); s.n += Number(r.net); return s; }, { r: 0, e: 0, n: 0 });
-    out.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('strong', {}, 'المعدات: الإيراد والمصروف'),
+    const ranked = [...rows].sort((a, b) => Number(b.net) - Number(a.net));
+    out.replaceChildren(
+      ranked.length > 1 ? h('div', { class: 'card an-rank' }, h('div', { class: 'toolbar' }, h('strong', {}, 'ربحية كل معدة'),
+        h('span', { class: 'help' }, 'إيراد المعدة − تكلفتها في الفترة. الأحمر = تكلفتها أكبر من إيرادها')),
+        hbars(ranked.map((r) => ({ label: `${r.code} — ${r.name}`, value: Number(r.net), sub: `إيراد ${N(r.revenue)} — تكلفة ${N(r.expense)}` })), { max: 15 })) : '',
+      h('div', { class: 'card' }, h('div', { class: 'toolbar' }, h('strong', {}, 'المعدات: الإيراد والمصروف'),
       h('span', { class: 'help' }, 'العرض المحاسبي. الإيراد الداخلي يُضاف مع قسم تشغيل المعدات.')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'grid report' },
-        h('thead', {}, h('tr', {}, ['الكود', 'المعدة', 'النوع', 'الملكية', 'الشركة', 'الإيراد', 'المصروف', 'الصافي', 'صرفت عليها شركات أخرى'].map((x) => h('th', {}, x)))),
+        h('thead', {}, h('tr', {}, ['الكود', 'المعدة', 'النوع', 'الملكية', 'الشركة', 'الإيراد', 'المصروف', 'الصافي', 'الهامش', 'صرفت عليها شركات أخرى'].map((x) => h('th', {}, x)))),
         h('tbody', {}, rows.length ? rows.map((r) => h('tr', { onclick: () => equipmentDetail(r, from.value, to.value) },
           h('td', { class: 'ltr' }, r.code), h('td', {}, r.name), h('td', {}, r.kind === 'vehicle' ? 'سيارة' : 'معدة'),
           h('td', {}, r.ownership === 'rented' ? h('span', { class: 'badge warn' }, 'مستأجرة') : 'مملوكة'), h('td', {}, state.companyName(r.company_id)),
           h('td', { class: 'num' }, N(r.revenue)), h('td', { class: 'num' }, N(r.expense)), h('td', { class: neg(r.net) }, N(r.net)),
+          h('td', { class: 'num' }, Number(r.revenue) ? (Number(r.net) / Number(r.revenue) * 100).toFixed(0) + '%' : (Number(r.expense) ? 'بلا إيراد' : '')),
           h('td', { class: 'num' }, Number(r.other_company_expense) ? h('span', { class: 'badge warn' }, N(r.other_company_expense)) : '')))
-          : h('tr', {}, h('td', { colspan: 9, class: 'empty' }, 'لا توجد حركات على المعدات'))),
-        h('tfoot', {}, h('tr', {}, h('td', { colspan: 5 }, 'الإجمالي'), h('td', { class: 'num' }, N(t.r)), h('td', { class: 'num' }, N(t.e)), h('td', { class: neg(t.n) }, N(t.n)), h('td', {})))))));
+          : h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'لا توجد حركات على المعدات'))),
+        h('tfoot', {}, h('tr', {}, h('td', { colspan: 5 }, 'الإجمالي'), h('td', { class: 'num' }, N(t.r)), h('td', { class: 'num' }, N(t.e)), h('td', { class: neg(t.n) }, N(t.n)), h('td', {}), h('td', {})))))));
     return { name: 'تقرير المعدات', aoa: [['الكود', 'المعدة', 'الشركة', 'الإيراد', 'المصروف', 'الصافي', 'صرفت عليها شركات أخرى'],
       ...rows.map((r) => [r.code, r.name, state.companyName(r.company_id), Number(r.revenue), Number(r.expense), Number(r.net), Number(r.other_company_expense)])] };
   });
@@ -609,11 +630,30 @@ async function analysisModal({ kind, id, title, from, to, owner }) {
     drawLines();
   }
 
+  // التطور الشهري: إيراد ومصروف كل شهر (يظهر لو الحركة على أكثر من شهر)
+  function monthly() {
+    const map = new Map();
+    for (const r of rows) {
+      const k = String(r.entry_date).slice(0, 7); const x = map.get(k) || { rev: 0, exp: 0 };
+      if (r.account_type === 'revenue') x.rev += Number(r.amount); else if (r.account_type === 'expense') x.exp += Number(r.amount);
+      map.set(k, x);
+    }
+    const ks = [...map.keys()].sort();
+    if (ks.length < 2) return '';
+    const months = []; const [y0, m0] = ks[0].split('-').map(Number); const [y1, m1] = ks[ks.length - 1].split('-').map(Number);
+    for (let y = y0, mm = m0; y < y1 || (y === y1 && mm <= m1); mm === 12 ? (y++, mm = 1) : mm++) months.push(`${y}-${String(mm).padStart(2, '0')}`);
+    const ser = tRev ? [{ label: 'الإيراد', color: CH[0] }, { label: 'المصروف', color: CH[1] }] : [{ label: 'المصروف', color: CH[1] }];
+    const data = months.slice(-24).map((k) => ({ label: k, values: tRev ? [map.get(k)?.rev || 0, map.get(k)?.exp || 0] : [map.get(k)?.exp || 0] }));
+    return h('div', { class: 'an-monthly' }, h('div', { class: 'toolbar', style: { margin: '12px 0 4px' } }, h('strong', {}, 'التطور الشهري'), legend(ser),
+      months.length > 24 ? h('span', { class: 'help' }, 'آخر 24 شهرًا') : ''), monthBars(data, ser, { label: 'التطور الشهري' }));
+  }
+
   const otherCo = owner ? sum(exp.filter((r) => r.company_id !== owner)) : 0;
   const kpi = (label, v, cls = '') => h('div', { class: 'an-kpi' }, h('div', { class: 'help' }, label), h('div', { class: 'an-kpi-v ' + cls }, N(v)));
   const content = h('div', {},
     h('div', { class: 'an-kpis' }, kpi('الإيراد', tRev), kpi('المصروف', tExp), kpi('الصافي', tRev - tExp, tRev - tExp < 0 ? 'neg' : ''),
       otherCo ? kpi('صرفت عليها شركات أخرى', otherCo) : '', h('div', { class: 'help', style: { alignSelf: 'end' } }, periodTxt)),
+    monthly(),
     h('div', { class: 'toolbar', style: { margin: '12px 0 8px' } }, h('strong', {}, 'توزيع المصروف'), modeBar,
       h('span', { class: 'help' }, 'اضغط على شريحة أو صف لعرض أسطره')),
     chartBox, linesBox);

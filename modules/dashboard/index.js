@@ -5,6 +5,7 @@
 import { core, rpc } from '../../shared/sb.js';
 import { h, fmt } from '../../shared/ui.js';
 import { state } from '../../shared/state.js';
+import { lineChart, monthBars, hbars, donut, legend, PALETTE } from '../../shared/charts.js';
 
 const ids = () => (state.selectedCompanies.length ? state.selectedCompanies : state.companies().map((c) => c.id));
 const put = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((x) => x !== null && x !== undefined && x !== false));
@@ -84,13 +85,37 @@ const list = (rows, cols) => (rows.length ? h('table', { class: 'dash-list' },
 // رسم كل بطاقة من أرقامها
 // ---------------------------------------------------------------------
 const DRAW = {
-  cash: (d) => [big(d.value, 'accent'), h('span', { class: 'dash-delta ' + (d.value >= d.open ? 'up' : 'down') },
+  cash: (d, x) => {
+    const today = ymd(new Date());
+    const ago = (dt) => { if (!dt) return 'بلا حركة'; const n = Math.round((new Date(today) - new Date(dt)) / 864e5); return n <= 0 ? 'اليوم' : n === 1 ? 'أمس' : `منذ ${n} يوم`; };
+    const accs = (x.cash_accounts || []).filter((a) => Number(a.balance) || a.last_date);
+    const multi = new Set(accs.map((a) => a.company)).size > 1;
+    return [big(d.value, 'accent'), h('span', { class: 'dash-delta ' + (d.value >= d.open ? 'up' : 'down') },
       `${d.value >= d.open ? '▲' : '▼'} ${num(Math.abs(d.value - d.open))} خلال الفترة (أولها ${num(d.open)})`),
-    d.by_company.length > 1 ? d.by_company.map((c) => line(c.company, num(c.value))) : null,
-    d.by_company.length > 1 ? h('div', { class: 'help' }, 'التحويلات بين الشركات لا تغيّر مجموع النقدية.') : null],
-  receivables: (d) => [big(d.value), line('منه متأخر عن الاستحقاق', `${num(d.overdue)} (${d.overdue_count} فاتورة)`, d.overdue > 0 ? 'bad' : ''),
-    list(d.top, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) }, { t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }]),
-    byCo(d.by_company, [{ t: 'العملاء', num: true, v: (r) => num(r.value) }])],
+      accs.length ? h('table', { class: 'dash-list' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'الحساب'), h('th', { class: 'num' }, 'الرصيد'), h('th', {}, 'آخر حركة'))),
+        h('tbody', {}, accs.map((a) => {
+          const low = a.min_balance !== null && a.min_balance !== undefined && Number(a.balance) < Number(a.min_balance);
+          return h('tr', {}, h('td', {}, a.name, multi ? h('small', { class: 'help' }, ' — ' + a.company) : null),
+            h('td', { class: 'num' }, h('span', { class: Number(a.balance) < 0 || low ? 'neg' : '', title: low ? `أقل من حد الأمان ${num(a.min_balance)}` : '' }, num(a.balance))),
+            h('td', { class: 'help', title: a.last_date ? fmt.date(a.last_date) : '' }, a.last_date ? `${fmt.date(a.last_date)} · ${ago(a.last_date)}` : 'بلا حركة'));
+        }))) : null];
+  },
+  receivables: (d, x) => {
+    const ret = Number(x.ar_split?.retention || 0); const withRet = store.get('ar-ret') !== 'no';
+    const box = h('div', { class: 'dash-body' });
+    const draw = (on) => put(box, big(on ? d.value : Number(d.value) - ret),
+      ret ? h('div', { class: 'help' }, on ? `شامل محتجزات أعمال ${num(ret)}` : `بدون محتجزات الأعمال (${num(ret)})`) : null,
+      line('منه متأخر عن الاستحقاق', `${num(d.overdue)} (${d.overdue_count} فاتورة)`, d.overdue > 0 ? 'bad' : ''),
+      list(on || !x.ar_split ? d.top : x.ar_split.top_main, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) },
+        ...(on ? [{ t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }] : [])]),
+      on ? byCo(d.by_company, [{ t: 'العملاء', num: true, v: (r) => num(r.value) }]) : null);
+    const seg = ret ? h('div', { class: 'dash-seg sm' }, ['مع المحتجزات', 'بدونها'].map((t, i) => h('button', { class: 'seg-btn' + ((i === 0) === withRet ? ' on' : ''), onclick: (e) => {
+      store.set('ar-ret', i === 0 ? 'yes' : 'no'); [...e.target.parentNode.children].forEach((b, k) => b.classList.toggle('on', k === i)); draw(i === 0);
+    } }, t))) : null;
+    draw(withRet);
+    return [seg, box];
+  },
   payables: (d) => [big(d.value), line('منه متأخر عن الاستحقاق', `${num(d.overdue)} (${d.overdue_count} فاتورة)`, d.overdue > 0 ? 'warn' : ''),
     list(d.top, [{ t: 'أكبر الأرصدة', v: (r) => r.name }, { t: 'الرصيد', num: true, v: (r) => num(r.amount) }, { t: 'متأخر', num: true, v: (r) => (r.overdue ? num(r.overdue) : '') }]),
     byCo(d.by_company, [{ t: 'الموردون', num: true, v: (r) => num(r.value) }])],
@@ -233,6 +258,52 @@ function trendChart(months) {
 }
 
 // ---------------------------------------------------------------------
+// الملخص: شريط أرقام مختصر + رسوم تحليلية — كل عنصر يظهر لمن مُنح بطاقته فقط
+// ---------------------------------------------------------------------
+function summary(data, x, cards, goTo, meta) {
+  const has = (c) => cards.includes(c) && data[c];
+  const tiles = [];
+  const tile = (code, label, value, sub, cls = '') => tiles.push(h('button', { class: 'dash-tile ' + cls, title: 'افتح ' + (meta[code]?.grp || ''), onclick: () => goTo(meta[code].grp) },
+    h('small', {}, label), h('b', { class: 'dash-big' + (Number(value) < 0 ? ' neg' : '') }, num(value)), sub ? h('span', {}, sub) : null));
+  if (has('cash')) tile('cash', 'النقدية', data.cash.value, `${(x.cash_accounts || []).filter((a) => Number(a.balance)).length} حساب`);
+  if (has('receivables')) {
+    const ret = Number(x.ar_split?.retention || 0); const withRet = store.get('ar-ret') !== 'no';
+    tile('receivables', 'على العملاء' + (ret ? (withRet ? ' (شامل المحتجزات)' : ' (بدون المحتجزات)') : ''), withRet ? data.receivables.value : data.receivables.value - ret,
+      Number(data.receivables.overdue) ? `متأخر ${num(data.receivables.overdue)}` : 'لا متأخرات', Number(data.receivables.overdue) ? 'warn' : '');
+  }
+  if (has('payables')) tile('payables', 'للموردين', data.payables.value, Number(data.payables.overdue) ? `متأخر ${num(data.payables.overdue)}` : '');
+  if (has('pl')) tile('pl', 'صافي ربح الفترة', data.pl.cur.net, `إيرادات ${num(Number(data.pl.cur.revenue) + Number(data.pl.cur.other_income))}`, Number(data.pl.cur.net) < 0 ? 'bad' : 'ok');
+  if (has('vat') && data.vat.rows?.length) {
+    const due = data.vat.rows.reduce((s, r) => s + Math.max(0, Number(r.prev.net)), 0);
+    tile('vat', 'ضريبة مستحقة (الفترة المنتهية)', due, `آخر موعد ${fmt.date(data.vat.rows[0].prev_due)}`, due > 0 ? 'warn' : '');
+  }
+  if (has('commitments')) {
+    const gap = Number(data.commitments.cash) + Number(data.commitments.fixed_in) - Number(data.commitments.total);
+    tile('commitments', gap >= 0 ? 'فائض بعد التزامات 30 يومًا' : 'عجز بعد التزامات 30 يومًا', Math.abs(gap) * (gap < 0 ? -1 : 1), `التزامات ${num(data.commitments.total)}`, gap < 0 ? 'bad' : '');
+  }
+
+  const charts = [];
+  const chart = (title, hint, ...body) => charts.push(h('section', { class: 'dash-card' }, h('header', {}, h('h3', {}, title), hint ? h('small', {}, hint) : null), h('div', { class: 'dash-body' }, ...body)));
+  if (has('trend') && data.trend.months?.length) {
+    chart('الإيرادات والمصروفات شهريًا', 'الأعمدة لكل شهر في الفترة',
+      legend([{ label: 'الإيرادات', color: PALETTE[0] }, { label: 'المصروفات', color: PALETTE[1] }]),
+      monthBars(data.trend.months.map((m) => ({ label: m.month, values: [m.revenue, m.expense] })), [{ label: 'الإيرادات', color: PALETTE[0] }, { label: 'المصروفات', color: PALETTE[1] }]));
+  }
+  if (x.cash_series?.length) chart('رصيد النقدية آخر كل شهر', 'آخر 12 شهرًا حتى نهاية الفترة', lineChart(x.cash_series.map((m) => ({ label: m.month, value: m.cash })), { label: 'رصيد النقدية' }));
+  if (x.exp_mix?.length) chart('أين ذهبت مصروفات الفترة', 'حسب مجموعة الحساب', donut(x.exp_mix.map((r) => ({ label: r.name, value: r.amount })), { total: 'المصروفات' }));
+  if (x.aging?.some((b) => Number(b.amount))) chart('أعمار ديون العملاء', 'المتبقي من الفواتير حسب التأخير عن الاستحقاق',
+    hbars(x.aging.map((b, i) => ({ label: b.label, value: b.amount, color: ['#1baf7a', '#eda100', '#eb6834', '#d03b3b', '#8f1d1d'][i] })), { max: 5 }));
+  if (has('projects') && data.projects.rows?.length) chart('هامش المشاريع', 'الإيراد − المصروف، الأعلى صرفًا',
+    hbars(data.projects.rows.map((r) => ({ label: r.name, value: Number(r.revenue) - Number(r.expense), sub: `إيراد ${num(r.revenue)} — مصروف ${num(r.expense)}` }))));
+  if (has('equipment') && data.equipment.rows?.length) chart('صافي المعدات', 'إيراد المعدة − تكلفتها في الفترة',
+    hbars(data.equipment.rows.map((r) => ({ label: r.name, value: Number(r.revenue) - Number(r.expense), sub: `إيراد ${num(r.revenue)} — تكلفة ${num(r.expense)}` }))));
+
+  return [tiles.length ? h('div', { class: 'dash-tiles' }, tiles) : null,
+    has('alerts') ? h('div', { class: 'dash-grid' }, h('section', { class: 'dash-card wide' }, h('header', {}, h('h3', {}, 'التنبيهات')), h('div', { class: 'dash-body' }, DRAW.alerts(data.alerts)))) : null,
+    charts.length ? h('div', { class: 'dash-charts' }, charts) : h('div', { class: 'help' }, 'لا رسوم لبطاقاتك — اطلب من المدير بطاقات الأداء أو السيولة.')];
+}
+
+// ---------------------------------------------------------------------
 // الصفحة
 // ---------------------------------------------------------------------
 async function renderBoard(el) {
@@ -271,9 +342,12 @@ async function renderBoard(el) {
     const sel = ids(); const all = state.allCompaniesSelected();
     coLbl.textContent = all ? 'كل الشركات' : sel.map((id) => state.companyName(id)).join(' + ');
     put(body, h('div', { class: 'empty' }, 'جارٍ الحساب…'));
-    let data;
-    try { data = await rpc('dash_data', { p_cards: cards, p_companies: sel, p_from: from.value, p_to: to.value, p_compare: CMP }, 'accounting'); }
-    catch (e) { if (my === seq) put(body, h('div', { class: 'notice bad' }, e.message)); return; }
+    let data, extra;
+    try {
+      [data, extra] = await Promise.all([
+        rpc('dash_data', { p_cards: cards, p_companies: sel, p_from: from.value, p_to: to.value, p_compare: CMP }, 'accounting'),
+        rpc('dash_extra', { p_companies: sel, p_from: from.value, p_to: to.value }, 'accounting').catch(() => ({}))]);
+    } catch (e) { if (my === seq) put(body, h('div', { class: 'notice bad' }, e.message)); return; }
     if (my !== seq) return;
     put(printHead, h('h2', {}, 'لوحة التحكم — ' + coLbl.textContent), h('div', {}, `الفترة ${fmt.date(data._meta.from)} — ${fmt.date(data._meta.to)} — طُبعت ${fmt.date(ymd(new Date()))}`));
     const groups = [];
@@ -282,22 +356,35 @@ async function renderBoard(el) {
       if (!g) groups.push(g = { name: m.grp, items: [] });
       g.items.push(code);
     }
-    put(body, groups.map((g) => [h('div', { class: 'section-title' }, g.name),
-      h('div', { class: 'dash-grid' }, g.items.map((code) => {
-        const m = meta[code]; let inner;
-        try { inner = DRAW[code](data[code] || {}); } catch (e) { inner = h('div', { class: 'notice bad' }, e.message); }
-        const lk = LINKS[code]; const tag = scopeTag(code, data._meta.multi);
-        const more = details.includes(code)
-          ? h('button', { class: 'dash-more', onclick: () => detailDialog(code, m.title, { from: from.value, to: to.value, companies: ids(), card: data[code] }) }, 'القائمة ←')
-          : lk && state.can(lk[0], 1) ? h('a', { class: 'dash-more', href: lk[1] }, 'التفاصيل ←') : null;
-        return h('section', { class: 'dash-card' + (['pl', 'trend', 'projects', 'equipment', 'alerts', 'contracts', 'project_risk', 'top_expenses'].includes(code) ? ' wide' : '') },
-          h('header', {}, h('div', { class: 'dash-head' }, h('h3', {}, m.title), more),
-            h('small', {}, m.hint), tag ? h('span', { class: 'dash-tag' }, tag) : null), h('div', { class: 'dash-body' }, inner));
-      }))]),
-    h('p', { class: 'help', style: { marginTop: '14px' } },
-      `الفترة ${fmt.date(data._meta.from)} — ${fmt.date(data._meta.to)} (${data._meta.days} يومًا)، والمقارنة بـ ${fmt.date(data._meta.prev_from)} — ${fmt.date(data._meta.prev_to)}. `,
-      data._meta.multi ? 'أكثر من شركة: بطاقات «مجمّع بعد الاستبعاد» تستبعد التعاملات بين الشركات (الذمم المتبادلة والبيع والشراء بينها)، وبطاقات «بأرقام كل شركة» تجمع أرقام الشركات كما هي (الشراء من شقيقة تكلفة حقيقية على المشروع). ' : '',
-      'الأرصدة في آخر الفترة، والإيرادات والمصروفات خلالها، من القيود السارية فقط (دون قيود الافتتاح والإقفال).'));
+    const card = (code) => {
+      const m = meta[code]; let inner;
+      try { inner = DRAW[code](data[code] || {}, extra || {}); } catch (e) { inner = h('div', { class: 'notice bad' }, e.message); }
+      const lk = LINKS[code]; const tag = scopeTag(code, data._meta.multi);
+      const more = details.includes(code)
+        ? h('button', { class: 'dash-more', onclick: () => detailDialog(code, m.title, { from: from.value, to: to.value, companies: ids(), card: data[code] }) }, 'القائمة ←')
+        : lk && state.can(lk[0], 1) ? h('a', { class: 'dash-more', href: lk[1] }, 'التفاصيل ←') : null;
+      return h('section', { class: 'dash-card' + (['pl', 'trend', 'projects', 'equipment', 'alerts', 'contracts', 'project_risk', 'top_expenses'].includes(code) ? ' wide' : '') },
+        h('header', {}, h('div', { class: 'dash-head' }, h('h3', {}, m.title), more),
+          h('small', {}, m.hint), tag ? h('span', { class: 'dash-tag' }, tag) : null), h('div', { class: 'dash-body' }, inner));
+    };
+    // التبويبات: «الملخص» (أهم الأرقام + الرسوم) ثم كل مجموعة بطاقاتها وحدها — بدل صفحة طويلة مزدحمة
+    const tabs = [{ name: 'الملخص' }, ...groups];
+    let tab = store.get('tab'); if (!tabs.some((t) => t.name === tab)) tab = 'الملخص';
+    const tabBar = h('div', { class: 'dash-tabs' });
+    const pane = h('div');
+    const show = (name) => {
+      tab = name; store.set('tab', name);
+      put(tabBar, tabs.map((t) => h('button', { class: 'dash-tab' + (t.name === name ? ' on' : ''), onclick: () => show(t.name) }, t.name,
+        t.items ? h('small', {}, String(t.items.length)) : null)));
+      if (name === 'الملخص') put(pane, summary(data, extra || {}, cards, (g) => show(g), meta));
+      else put(pane, h('div', { class: 'dash-grid' }, groups.find((g) => g.name === name).items.map(card)));
+    };
+    put(body, tabBar, pane,
+      h('p', { class: 'help', style: { marginTop: '14px' } },
+        `الفترة ${fmt.date(data._meta.from)} — ${fmt.date(data._meta.to)} (${data._meta.days} يومًا)، والمقارنة بـ ${fmt.date(data._meta.prev_from)} — ${fmt.date(data._meta.prev_to)}. `,
+        data._meta.multi ? 'أكثر من شركة: بطاقات «مجمّع بعد الاستبعاد» تستبعد التعاملات بين الشركات (الذمم المتبادلة والبيع والشراء بينها)، وبطاقات «بأرقام كل شركة» تجمع أرقام الشركات كما هي (الشراء من شقيقة تكلفة حقيقية على المشروع). ' : '',
+        'الأرصدة في آخر الفترة، والإيرادات والمصروفات خلالها، من القيود السارية فقط (دون قيود الافتتاح والإقفال).'));
+    show(tab);
   }
   load();
   const off = state.onCompaniesChange(() => { if (document.body.contains(el)) load(); else off(); });

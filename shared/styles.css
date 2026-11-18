@@ -867,3 +867,48 @@ button.dash-more { background: none; border: 0; padding: 0; font: inherit; font-
 .an-sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; }
 table.grid.report tr.hl td { background: var(--accent-soft, #fff4e5); }
 @media print { .an-donut { width: 180px; height: 180px; flex-basis: 180px; } }
+
+/* ===== 1.11.12: الداشبورد بالتبويبات + الملخص + الرسوم ===== */
+.dash-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin: 8px 0 12px; }
+.dash-tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 14px; font: inherit; font-size: calc(13.5px * var(--fs, 1)); color: var(--ink-2); cursor: pointer; margin-bottom: -1px; }
+.dash-tab small { margin-inline-start: 6px; color: var(--ink-3); font-size: calc(11px * var(--fs, 1)); }
+.dash-tab:hover { color: var(--ink); }
+.dash-tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.dash-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.dash-tile { text-align: start; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; min-width: 0; }
+.dash-tile:hover { border-color: var(--accent); }
+.dash-tile small { color: var(--ink-3); font-size: calc(12px * var(--fs, 1)); }
+.dash-tile .dash-big { font-size: calc(20px * var(--fs, 1)); }
+.dash-tile span { color: var(--ink-2); font-size: calc(12px * var(--fs, 1)); }
+.dash-tile.warn { border-inline-start: 3px solid var(--warn); }
+.dash-tile.bad { border-inline-start: 3px solid var(--bad); }
+.dash-tile.ok { border-inline-start: 3px solid var(--ok); }
+.dash-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+.dash-seg.sm .seg-btn { padding: 3px 10px; font-size: calc(12px * var(--fs, 1)); }
+.dash-seg.sm { align-self: flex-start; }
+.ch { width: 100%; height: auto; max-height: 240px; display: block; }
+.ch .grid { stroke: var(--line-soft); stroke-width: 1; }
+.ch .zero { stroke: var(--line-2); stroke-width: 1; }
+.ch .ax { fill: var(--ink-3); font-size: 11px; font-family: var(--font); }
+.ch .hit { fill: transparent; }
+.ch .pt:hover .hit { fill: var(--hover); }
+.ch-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: calc(12.5px * var(--fs, 1)); color: var(--ink-2); }
+.ch-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-inline-end: 6px; vertical-align: -1px; }
+.ch-hbars { display: flex; flex-direction: column; gap: 6px; }
+.ch-hrow { display: grid; grid-template-columns: minmax(80px, 34%) 1fr auto; gap: 8px; align-items: center; font-size: calc(12.5px * var(--fs, 1)); }
+.ch-hlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.ch-htrack { background: var(--line-soft); border-radius: 4px; height: 12px; overflow: hidden; }
+.ch-hbar { display: block; height: 100%; border-radius: 4px; }
+.ch-hval { font-variant-numeric: tabular-nums; min-width: 64px; text-align: left; white-space: nowrap; }
+.ch-hval.neg { color: var(--bad); }
+.ch-donut-wrap { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.ch-donut { width: 170px; height: 170px; flex: none; }
+.ch-dt { fill: var(--ink); font-size: 15px; font-weight: 700; font-family: var(--font); }
+.ch-donut-legend { display: flex; flex-direction: column; gap: 4px; font-size: calc(12.5px * var(--fs, 1)); flex: 1; min-width: 160px; }
+.ch-donut-legend > div { display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: center; }
+.ch-donut-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.ch-donut-legend b { font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) { .dash-charts { grid-template-columns: 1fr; } .dash-tiles { grid-template-columns: 1fr 1fr; } }
+@media print { .dash-tabs { display: none; } }
+.grid tr.sel td { background: var(--accent-soft); }
+.an-rank { margin-bottom: 12px; } .an-rank .ch-hbars { max-width: 900px; } .an-monthly .ch { max-height: 220px; }
