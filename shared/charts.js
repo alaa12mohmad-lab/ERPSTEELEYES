@@ -131,3 +131,36 @@ export function donut(items, { total: totalLabel = 'الإجمالي', limit = 6
   return h('div', { class: 'ch-donut-wrap' }, svg, h('div', { class: 'ch-donut-legend' }, parts.map((p) => h('div', {},
     h('i', { style: { background: p.color } }), h('span', {}, p.label), h('b', {}, `${((Number(p.value) / total) * 100).toFixed(0)}%`)))));
 }
+
+// عدة خطوط على محور واحد (منحنى الإنجاز): labels = تسميات المحور، series = [{ label, color, values: [رقم أو null], dash }]
+//   marker = رقم موضع يُرسم عنده خط رأسي (اليوم). القيم من 0 إلى max (افتراضي 100).
+export function multiLine(labels, series, { max = 100, marker = null, fmtLabel = (s) => s, label = '', unit = '%' } = {}) {
+  if (!labels.length) return h('div', { class: 'help' }, 'لا أرقام');
+  const W = 680, H = 260, pl = 8, pr = 48, pt = 14, pb = 26;
+  const n = labels.length;
+  const x = (i) => W - pr - (n === 1 ? (W - pl - pr) / 2 : (i / (n - 1)) * (W - pl - pr));
+  const y = (v) => pt + ((max - v) / max) * (H - pt - pb);
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'ch', role: 'img', 'aria-label': label });
+  [0, 0.25, 0.5, 0.75, 1].forEach((f) => {
+    const v = max * f;
+    svg.append(svgEl('line', { x1: pl, x2: W - pr, y1: y(v), y2: y(v), class: f ? 'grid' : 'zero' }));
+    const t = svgEl('text', { x: W - pr + 8, y: y(v) + 4, class: 'ax' }); t.textContent = Math.round(v) + unit; svg.append(t);
+  });
+  if (marker !== null && marker >= 0 && marker < n) {
+    svg.append(svgEl('line', { x1: x(marker), x2: x(marker), y1: pt, y2: H - pb, stroke: 'var(--accent)', 'stroke-dasharray': '3 3' }));
+    const t = svgEl('text', { x: x(marker), y: pt - 2, 'text-anchor': 'middle', class: 'ax', style: 'fill: var(--accent)' }); t.textContent = 'اليوم'; svg.append(t);
+  }
+  series.forEach((s) => {
+    let d = ''; let pen = false;
+    s.values.forEach((v, i) => { if (v === null || v === undefined) { pen = false; return; } d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(Number(v)).toFixed(1)} `; pen = true; });
+    if (d) svg.append(svgEl('path', { d, fill: 'none', stroke: s.color, 'stroke-width': s.width || 2.5, 'stroke-dasharray': s.dash || null, 'stroke-linejoin': 'round' }));
+  });
+  const step = Math.max(1, Math.ceil(n / 12));
+  labels.forEach((lb, i) => {
+    const g = svgEl('g', { class: 'pt' }, tip(`${fmtLabel(lb)}: ` + series.map((s) => `${s.label} ${s.values[i] === null || s.values[i] === undefined ? '—' : Number(s.values[i]).toFixed(1) + unit}`).join(' — ')),
+      svgEl('rect', { x: x(i) - (W - pl - pr) / n / 2, y: 0, width: (W - pl - pr) / n, height: H - pb, class: 'hit' }));
+    if (i % step === 0 || i === n - 1) { const t = svgEl('text', { x: x(i), y: H - 8, 'text-anchor': 'middle', class: 'ax' }); t.textContent = fmtLabel(lb); g.append(t); }
+    svg.append(g);
+  });
+  return svg;
+}

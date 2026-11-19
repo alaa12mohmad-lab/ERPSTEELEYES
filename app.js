@@ -27,10 +27,11 @@ import adminModule from './modules/admin/index.js';
 import accountingModule from './modules/accounting/index.js';
 import paymentsModule from './modules/payments/index.js';
 import custodyModule from './modules/custody/index.js';
+import execModule from './modules/exec/index.js';
 import dashboardModule from './modules/dashboard/index.js';
 
 // كل قسم جديد يُضاف هنا فقط
-const MODULES = [dashboardModule, paymentsModule, custodyModule, accountingModule, coreModule, adminModule];
+const MODULES = [dashboardModule, execModule, paymentsModule, custodyModule, accountingModule, coreModule, adminModule];
 
 const root = document.getElementById('app');
 
@@ -283,6 +284,7 @@ function route() {
 // ---------------------------------------------------------------------
 const MOD_DESC = {
   accounting: 'القيود، شجرة الحسابات، الفواتير والإقرار الضريبي، والتقارير المالية',
+  exec: 'تقدّم الأعمال في المواقع: بنود القياس والخطة، والتقرير اليومي، ولوحة الإنجاز',
   core: 'المشاريع، العملاء والموردون، المعدات، الموظفون، ومراكز التكلفة',
   admin: 'المستخدمون، الأدوار، الاستثناءات، وسجل المراجعة',
   hr: 'الحضور والمسيّر، ويرحّل قيد الرواتب للمحاسبة',

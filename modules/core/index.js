@@ -313,9 +313,9 @@ export default {
       }),
     },
     {
-      path: 'categories', title: 'التصنيفات', subtitle: 'أنواع المصروفات، أنواع المعدات، أصناف العدد، أنواع المستندات',
+      path: 'categories', title: 'التصنيفات', subtitle: 'أنواع المصروفات، أنواع المعدات، أصناف العدد، أنواع المستندات، مهن العمالة ومعوقات الموقع',
       render: (el) => {
-        const KINDS = [['expense_type', 'نوع مصروف'], ['equipment_type', 'نوع معدة'], ['tool_category', 'صنف عِدد'], ['document_type', 'نوع مستند']];
+        const KINDS = [['expense_type', 'نوع مصروف'], ['equipment_type', 'نوع معدة'], ['tool_category', 'صنف عِدد'], ['document_type', 'نوع مستند'], ['trade', 'مهنة عمالة (التقرير اليومي)'], ['site_obstacle', 'معوّق موقع (التقرير اليومي)']];
         return renderMaster(el, {
           title: 'التصنيف', table: 'categories', module: 'core', importable: true, order: [{ col: 'kind' }, { col: 'code' }],
           columns: [{ key: 'kind', label: 'النوع', render: (r) => (KINDS.find((k) => k[0] === r.kind) || [])[1] }, { key: 'code', label: 'الكود' }, { key: 'name', label: 'الاسم' }],
