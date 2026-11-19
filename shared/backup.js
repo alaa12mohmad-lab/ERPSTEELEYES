@@ -13,7 +13,7 @@ export const BACKUP_TABLES = [
   ['core', 'sensitive_items'], ['core', 'role_sensitive'], ['core', 'app_users'], ['core', 'user_companies'], ['core', 'user_projects'],
   ['core', 'user_permission_overrides'], ['core', 'user_sensitive_overrides'],
   ['core', 'units'], ['core', 'categories'], ['core', 'cost_centers'], ['core', 'parties'], ['core', 'projects'], ['core', 'project_companies'],
-  ['core', 'locations'], ['core', 'employees'], ['core', 'equipment'], ['core', 'price_kinds'], ['core', 'prices'], ['core', 'attachments'], ['core', 'prg_templates'], ['core', 'prg_items'], ['core', 'prg_plans'], ['core', 'prg_reports'],
+  ['core', 'locations'], ['core', 'employees'], ['core', 'equipment'], ['core', 'price_kinds'], ['core', 'prices'], ['core', 'attachments'], ['core', 'prg_templates'], ['core', 'prg_items'], ['core', 'prg_plans'], ['core', 'prg_reports'], ['core', 'eng_drawings'], ['core', 'eng_rfis'],
   ['accounting', 'accounts'], ['accounting', 'batches'], ['accounting', 'journal_entries'], ['accounting', 'journal_lines'],
   ['accounting', 'entry_versions'], ['accounting', 'proposed_entries'], ['accounting', 'deleted_entries'], ['accounting', 'period_locks'],
   ['accounting', 'bank_statements'], ['accounting', 'bank_statement_lines'], ['accounting', 'cash_commitments'],

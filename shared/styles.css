@@ -966,3 +966,17 @@ td.ok { color: var(--ok); }
 .ex-wk input { width: 44px; border: 0; background: transparent; text-align: center; font: inherit; padding: 6px 0; color: var(--ink); }
 .ex-wk input:focus { outline: 2px solid var(--accent); }
 @media (max-width: 860px) { .ex-daily, .ex-two { grid-template-columns: 1fr; } }
+
+/* ===== 1.12.1: التقرير المرن، عرض التقرير، الهندسة ===== */
+.ex-rows { display: flex; flex-direction: column; gap: 6px; }
+.ex-crew-row { display: grid; grid-template-columns: minmax(0, 1fr) 88px auto; gap: 6px; align-items: center; }
+.ex-extra-row { display: grid; grid-template-columns: minmax(0, 2fr) 88px minmax(80px, 1fr) auto; gap: 6px; align-items: center; }
+.ex-chip.add { border-style: dashed; color: var(--accent); }
+.ex-report h4 { margin: 16px 0 6px; font-size: calc(14px * var(--fs, 1)); }
+.ex-rep-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.ex-rep-meta > div { display: flex; flex-direction: column; gap: 2px; }
+.ex-rep-who { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: calc(12.5px * var(--fs, 1)); color: var(--ink-2); }
+.ex-two-print { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ex-hist { margin: 8px 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 8px; }
+.ex-hist ul { margin: 4px 0 0; padding-inline-start: 18px; color: var(--ink-2); }
+@media (max-width: 720px) { .ex-extra-row { grid-template-columns: 1fr 80px; } .ex-two-print, .ex-rep-who { grid-template-columns: 1fr; } }
